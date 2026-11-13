@@ -204,6 +204,12 @@ class CheckIn(Payload):
     cleaner: Annotated[str, AfterValidator(_trimmed_name)] | None = None
 
 
+class HandOut(Payload):
+    """Goods given away for good (FR-DST-01). `count` is set only for a pool; a single item goes whole."""
+
+    count: Annotated[int, Field(ge=1)] | None = None
+
+
 class Recount(Payload):
     """How many are in right now, and optionally why (FR-INV-35). Anyone may record one; `pool_out` is untouched."""
 
@@ -532,6 +538,11 @@ class CheckedIn(_ItemOnly):
     payload: CheckIn
 
 
+class HandedOut(_ItemOnly):
+    type: Literal["handed_out"]
+    payload: HandOut
+
+
 class Recounted(_ItemOnly):
     """A pool's count, put right, with an optional reason (FR-INV-35). Refused off a pool (FR-INV-34)."""
 
@@ -634,6 +645,7 @@ IncomingEvent = Annotated[
     | QuantityChanged
     | CheckedOut
     | CheckedIn
+    | HandedOut
     | Recounted
     | PoolMissingEvent
     | PoolFoundEvent
@@ -665,6 +677,7 @@ EVENT_TYPES = frozenset(
         "quantity_changed",
         "checked_out",
         "checked_in",
+        "handed_out",
         "recounted",
         "pool_missing",
         "pool_found",

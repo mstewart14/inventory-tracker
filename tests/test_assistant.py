@@ -2810,3 +2810,56 @@ def test_a_unit_made_single_keeps_its_own_capacity(db_path, tools):
     assistant.update_item(unit, assistant.ItemFields(capacity=assistant.Weight(value=30, unit="lb")))
     assistant.make_single(generic)
     assert entity(db_path, "item", unit)["capacity"] == {"value": 30, "unit": "lb"}
+
+
+# --- handing out (FR-DST) --------------------------------------------------------------------------
+
+
+def test_handing_out_a_single_item_takes_it_out_of_the_inventory(db_path, tools):
+    assert assistant.hand_out(tools["stove"]) == {"item_id": tools["stove"], "handed_out": True}
+    stored = entity(db_path, "item", tools["stove"])
+    assert stored["retired"] is True and stored["status"] == "in" and stored["holder_id"] is None
+    got = assistant.get_item(tools["stove"])
+    assert got["retired"] is True and got["handed_out"] is True
+    assert got["history"][0]["type"] == "handed_out"
+    assert tools["stove"] not in [row["item_id"] for row in assistant.search_items()["rows"]]
+
+
+def test_a_single_item_is_handed_out_once(tools):
+    assistant.hand_out(tools["stove"])
+    with pytest.raises(Conflict, match="already handed out"):
+        assistant.hand_out(tools["stove"])
+
+
+def test_unretiring_brings_back_what_was_handed_out_by_mistake(tools):
+    assistant.hand_out(tools["stove"])
+    assistant.retire_item(tools["stove"], retired=False)
+    got = assistant.get_item(tools["stove"])
+    assert got["status"] == "in" and "retired" not in got and "handed_out" not in got
+
+
+def test_a_retired_item_is_not_handed_out(tools):
+    assistant.retire_item(tools["stove"])
+    with pytest.raises(Conflict, match="retired items are not handed out"):
+        assistant.hand_out(tools["stove"])
+
+
+def test_handing_out_a_pool_takes_a_count_off_what_is_in(tools, pool_id):
+    assert assistant.hand_out(pool_id, count=6) == {"item_id": pool_id, "count": 6, "in": 14, "handed_out": 6}
+    got = assistant.get_item(pool_id)
+    assert got["owned"] == 14 and got["in"] == 14 and got["handed_out"] == 6
+    assert got["history"][0]["type"] == "handed_out" and got["history"][0]["count"] == 6
+
+
+def test_hand_out_refuses_more_of_a_pool_than_are_in(tools, pool_id):
+    with pytest.raises(BadRequest, match="only 20 in; recount first"):
+        assistant.hand_out(pool_id, count=21)
+
+
+def test_hand_out_takes_a_count_for_a_pool_and_for_nothing_else(tools, pool_id):
+    with pytest.raises(BadRequest, match="say how many"):
+        assistant.hand_out(pool_id)
+    with pytest.raises(BadRequest, match="count is only for a pool"):
+        assistant.hand_out(tools["stove"], count=1)
+    with pytest.raises(BadRequest, match="one of its units"):
+        assistant.hand_out(tools["tents"])

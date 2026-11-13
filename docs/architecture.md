@@ -584,6 +584,15 @@ closes it by moving on. Reviewing it, on the Conflicts screen, records one `fiel
 `reviewed_movement`, naming that check-out: the holder stands, the movements are untouched, and the screen shows both
 versions in words until one of those happens (FR-OFF-10).
 
+**Handing out** (FR-DST-01) is `handed_out`, the one movement that expects nothing back. On a pool it carries a `count`:
+replay takes it off `pool_in`, clamped at zero as a check-out is, and adds it to `pool_given`, which is not clamped
+because it records what people say they handed over. What is given is no longer owned. On a single item or a unit it
+carries nothing: replay sets `retired`, clears the holder, and leaves `status` "in". Retired is what already hides an
+item from every list and refuses a check-out (FR-INV-04), so a handed-out item needs no status of its own, and
+unretiring it is the whole of putting it back in stock (FR-DST-05). An item reads as handed out while it is retired and
+its last movement is a `handed_out` (`was_handed_out`, `wasHandedOut`). Nothing about who received the goods is in the
+payload, and nothing should be added (FR-DST-08).
+
 Notes ride on the item, not the movement, as `note_added` events. One that belongs to a movement carries its
 `movement_id`, so it can be shown under the right check-out and still be corrected later by `note_corrected`
 (FR-OUT-16). Movement events themselves carry no note text.

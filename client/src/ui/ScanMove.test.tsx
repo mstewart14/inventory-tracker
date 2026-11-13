@@ -84,7 +84,9 @@ test("an assigned code shows the card; Check out moves at once, then the bar ask
   expect(within(card()).getByRole("heading")).toHaveTextContent("Tent 1");
   expect(card()).toHaveTextContent("Cold locker / shelf 4");
   expect(card()).toHaveTextContent("In");
-  expect(within(card()).getByRole("button", { name: "Check out" })).toHaveClass("primary");
+  // Handing out is what the card is for; a check-out, which expects the gear back, is beside it (FR-DST-04).
+  expect(within(card()).getByRole("button", { name: "Hand out" })).toHaveClass("primary");
+  expect(within(card()).getByRole("button", { name: "Check out" })).not.toHaveClass("primary");
   expect(within(card()).queryByRole("button", { name: "Return" })).not.toBeInTheDocument();
 
   expect(screen.queryByRole("region", { name: "Which event" })).not.toBeInTheDocument();
@@ -619,4 +621,14 @@ test("an event shown when the card opened but ended before the tap waits for an 
   await user.click(within(ask).getByRole("button", { name: /Spring camp/ }));
   await screen.findByText("Event: Spring camp");
   expect(item(store.state, tent)?.movement?.event).toBe("Spring camp");
+});
+
+test("Hand out on the card gives the item away in one tap, and asks no event (FR-DST-01, FR-DST-04)", async () => {
+  renderInShell(<Scan store={store} native />);
+  await camera.scan("AAAAAAAAAA");
+  await user.click(within(card()).getByRole("button", { name: "Hand out" }));
+  expect(await screen.findByText("Handed out · Tent 1")).toHaveAttribute("role", "status");
+  expect(screen.queryByRole("region", { name: "Which event" })).not.toBeInTheDocument();
+  expect(pending("handed_out")[0]!.payload).toEqual({});
+  expect(item(store.state, tent)).toMatchObject({ retired: true, status: "in", holder_id: null });
 });

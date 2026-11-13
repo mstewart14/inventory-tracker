@@ -784,6 +784,27 @@ def test_a_pool_may_take_a_code(db):
     assert reasons(db, USER, bind) == []
 
 
+def test_a_hand_out_takes_a_count_for_a_pool_and_for_nothing_else(db):
+    push(db, USER, batch(USER, own(USER, type="created", payload={"name": "Coat"})), now=T0)
+    counted = own(USER, type="handed_out", payload={"count": 2}, device_seq=2)
+    assert reasons(db, USER, counted) == ["count is only for a pool (FR-DST-02)"]
+    assert reasons(db, USER, own(USER, type="handed_out", payload={}, device_seq=3)) == []
+
+    pool = {"name": "Socks", "generic": True, "pool": True, "quantity": 20}
+    push(db, USER, batch(USER, own(USER, entity_id="socks", type="created", payload=pool, device_seq=4)), now=T0)
+    whole = own(USER, entity_id="socks", type="handed_out", payload={}, device_seq=5)
+    assert reasons(db, USER, whole) == ["a pool is handed out by count (FR-DST-02)"]
+    assert reasons(db, USER, own(USER, entity_id="socks", type="handed_out", payload={"count": 3}, device_seq=6)) == []
+    none = own(USER, entity_id="socks", type="handed_out", payload={"count": 0}, device_seq=7)
+    assert reasons(db, USER, none) == ["payload.count: Input should be greater than or equal to 1"]
+
+
+def test_a_generic_item_is_not_handed_out(db):
+    push(db, USER, batch(USER, own(USER, type="created", payload={"name": "Tent", "generic": True})), now=T0)
+    bad = own(USER, type="handed_out", payload={}, device_seq=2)
+    assert reasons(db, USER, bad) == ["a generic item is not handed out; its units are (FR-DST-01)"]
+
+
 def test_recount_is_only_for_a_pool(db):
     push(db, USER, batch(USER, own(USER, type="created", payload={"name": "Tent"})), now=T0)
     bad = own(USER, type="recounted", payload={"count": 5, "reason": "shelf check"}, device_seq=2)

@@ -35,6 +35,7 @@ export interface Item {
   pool_in?: number;
   /** Owned but lost, for a pool. Absent until the first one is marked missing (FR-INV-46). */
   pool_missing?: number;
+  pool_given?: number;
   /** Holder id to count, for what is checked out of a pool. Holders at zero are absent (FR-INV-34). */
   pool_out?: PoolOut;
   /** Reservation id to count checked out for it, never reduced by a return. Set only on a pool (FR-RES-13). */
@@ -200,17 +201,31 @@ export interface PoolCounts {
   owned: number;
   in: number;
   missing: number;
+  /** How many were handed out for good, ever (FR-DST-02). Not part of `owned`. */
+  given: number;
   out: PoolHolderCount[];
 }
 
-/** Owned, in, missing, and out by holder for a pool (FR-INV-36). `owned` is `in`, `missing` and every holder's count. */
+/** A single item or unit that left for good (FR-DST-01), until it is unretired (FR-DST-05). Twin of was_handed_out in views.py. */
+export const wasHandedOut = (it: Item): boolean => Boolean(it.retired) && it.movement?.type === "handed_out";
+
+/**
+ * Owned, in, missing, given, and out by holder for a pool (FR-INV-36). `owned` is `in`, `missing` and every
+ * holder's count; what was given away is no longer owned (FR-DST-01).
+ */
 export function poolCounts(it: Item): PoolCounts {
   const poolIn = it.pool_in ?? 0;
   const out = Object.entries(it.pool_out ?? {})
     .filter(([, count]) => count > 0)
     .map(([holder_id, count]) => ({ holder_id, count }));
   const missing = it.pool_missing ?? 0;
-  return { owned: poolIn + out.reduce((sum, o) => sum + o.count, 0) + missing, in: poolIn, missing, out };
+  return {
+    owned: poolIn + out.reduce((sum, o) => sum + o.count, 0) + missing,
+    in: poolIn,
+    missing,
+    given: it.pool_given ?? 0,
+    out,
+  };
 }
 
 /**

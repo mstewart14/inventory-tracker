@@ -1,0 +1,65 @@
+{
+  "name": "handing out a single item retires it with nobody holding it, even from out",
+  "events": [
+    {
+      "id": "01000000000000000000000001",
+      "entity_type": "item",
+      "entity_id": "coat-1",
+      "type": "created",
+      "actor_id": "alice",
+      "device_id": "a",
+      "device_seq": 1,
+      "effective_at": 1000,
+      "payload": {
+        "name": "Winter coat"
+      }
+    },
+    {
+      "id": "01000000000000000000000002",
+      "entity_type": "item",
+      "entity_id": "coat-1",
+      "type": "checked_out",
+      "actor_id": "alice",
+      "device_id": "a",
+      "device_seq": 2,
+      "effective_at": 2000,
+      "payload": {
+        "holder_id": "alice"
+      }
+    },
+    {
+      "id": "01000000000000000000000003",
+      "entity_type": "item",
+      "entity_id": "coat-1",
+      "type": "handed_out",
+      "actor_id": "alice",
+      "device_id": "a",
+      "device_seq": 3,
+      "effective_at": 3000,
+      "payload": {}
+    }
+  ],
+  "state": {
+    "item": {
+      "coat-1": {
+        "name": "Winter coat",
+        "added_at": 1000,
+        "modified_at": 1000,
+        "status": "in",
+        "holder_id": null,
+        "since": 3000,
+        "retired": true,
+        "movement": {
+          "id": "01000000000000000000000003",
+          "type": "handed_out",
+          "holder_id": null,
+          "event": null,
+          "reservation_id": null,
+          "actor_id": "alice",
+          "device_id": "a",
+          "at": 3000
+        }
+      }
+    }
+  }
+}

@@ -145,3 +145,24 @@ test("Return is disabled straight after a check-out", async () => {
   await user.click(screen.getByRole("button", { name: "Return" }));
   expect(item(store.state, tent)?.status).toBe("out");
 });
+
+test("an item handed out says so, and offers only the way back (FR-DST-05)", async () => {
+  await mv.handOut(store, tent);
+  const onMoved = vi.fn();
+  renderInShell(<MoveActions store={store} it={item(store.state, tent)!} onMoved={onMoved} />);
+  expect(screen.getByRole("note")).toHaveTextContent("Handed out. No longer in the inventory.");
+  expect(screen.queryByRole("button", { name: "Hand out" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Check out" })).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Put back in stock" }));
+  await waitFor(() => expect(onMoved).toHaveBeenCalledWith("Back in stock", undefined, undefined));
+  expect(item(store.state, tent)).toMatchObject({ retired: false, status: "in" });
+});
+
+test("an item is handed out once, and a retired one not at all (FR-DST-01)", async () => {
+  await mv.handOut(store, tent);
+  await expect(mv.handOut(store, tent)).rejects.toThrow("already handed out");
+  const coat = await act.createItem(store, { name: "Coat" });
+  await act.retireItem(store, coat);
+  await expect(mv.handOut(store, coat)).rejects.toThrow("retired items are not handed out");
+});

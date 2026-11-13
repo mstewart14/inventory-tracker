@@ -12,8 +12,9 @@ same job: a wide variety of things arrive and each needs a name, a place, and a 
 gear is lent and comes back. Donations leave for good.
 
 The functional requirements, non-functional requirements and stories still describe the Scout version, apart from roles
-(FR-USR-36 on), holds (section 12) and visibility (section 13), which are written for the society and not built yet.
-Until a section is rewritten, read it as what the code does today, not what the society needs.
+(FR-USR-36 on), holds (section 12), visibility (section 13) and handing out (section 14), which are written for the
+society. Handing out is built; the others are not yet. Until a section is rewritten, read it as what the code does
+today, not what the society needs.
 
 ## Documents
 

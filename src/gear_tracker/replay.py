@@ -89,6 +89,12 @@ State = dict[str, dict[str, dict[str, Any]]]
 #                                             pool_out are untouched, so owned drops by `gone` (FR-INV-49).
 #   pool_found  {count}                      found = min(count, pool_missing); pool_missing -= found;
 #                                             pool_in += found (FR-INV-47).
+#   handed_out  {count}                      given away for good (FR-DST-01): pool_in -= count, clamped at 0;
+#                                             pool_given += count, unclamped, because it is what people say
+#                                             they handed over. pool_out is untouched. On a single item or a
+#                                             unit, with no count: status "in", no holder, and `retired`, so
+#                                             it leaves every list as a retired item does and Unretire is the
+#                                             way back. Its `movement` says it was handed out.
 #   weighed     {value, unit}                reading = {value, unit, at}. A null value is Unknown: reading = null
 #                                             (FR-INV-64, FR-INV-67). The last event wins, however it is read.
 #   refilled    {}                           reading = {full: true, at} (FR-INV-65).
@@ -119,6 +125,7 @@ DERIVED_FIELDS = frozenset(
         "pool_reservations",
         "pool_lots",
         "pool_missing",
+        "pool_given",
         "reading",
         "deactivated_at",
     }
@@ -459,6 +466,17 @@ def apply(entity: dict[str, Any], event: Event) -> None:
                 entity["holder_id"] = None
                 entity["since"] = event.effective_at
                 entity["movement"] = _movement(event)
+        case "handed_out":
+            # Goods leave for good, and nobody holds them (FR-DST-01).
+            if p.get("count") is not None:
+                entity["pool_in"] = max(0, entity.get("pool_in", 0) - p["count"])
+                entity["pool_given"] = entity.get("pool_given", 0) + p["count"]
+            else:
+                entity["status"] = "in"
+                entity["holder_id"] = None
+                entity["since"] = event.effective_at
+                entity["retired"] = True
+            entity["movement"] = _movement(event)
         case "recounted":
             # How many are in right now; what is already out is untouched (FR-INV-35).
             entity["pool_in"] = p["count"]

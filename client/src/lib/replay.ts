@@ -82,6 +82,12 @@ export type State = Record<string, Record<string, Fields>>;
 //                                             pool_out are untouched, so owned drops by `gone` (FR-INV-49).
 //   pool_found  {count}                      found = min(count, pool_missing); pool_missing -= found;
 //                                             pool_in += found (FR-INV-47).
+//   handed_out  {count}                      given away for good (FR-DST-01): pool_in -= count, clamped at 0;
+//                                             pool_given += count, unclamped, because it is what people say
+//                                             they handed over. pool_out is untouched. On a single item or a
+//                                             unit, with no count: status "in", no holder, and `retired`, so
+//                                             it leaves every list as a retired item does and Unretire is the
+//                                             way back. Its `movement` says it was handed out.
 //   weighed     {value, unit}                reading = {value, unit, at}. A null value is Unknown: reading = null
 //                                             (FR-INV-64, FR-INV-67). The last event wins, however it is read.
 //   refilled    {}                           reading = {full: true, at} (FR-INV-65).
@@ -286,6 +292,7 @@ export const KNOWN_EVENT_TYPES: ReadonlySet<string> = new Set([
   "note_deleted",
   "checked_out",
   "checked_in",
+  "handed_out",
   "recounted",
   "pool_missing",
   "pool_found",
@@ -557,6 +564,20 @@ export function apply(entity: Fields, event: ReplayEvent): void {
       entity.movement = movement(event);
       break;
     }
+    case "handed_out":
+      // Goods leave for good, and nobody holds them (FR-DST-01).
+      if (p.count != null) {
+        const count = p.count as number;
+        entity.pool_in = Math.max(0, ((entity.pool_in as number | undefined) ?? 0) - count);
+        entity.pool_given = ((entity.pool_given as number | undefined) ?? 0) + count;
+      } else {
+        entity.status = "in";
+        entity.holder_id = null;
+        entity.since = event.effective_at;
+        entity.retired = true;
+      }
+      entity.movement = movement(event);
+      break;
     case "recounted":
       // How many are in right now; what is already out is untouched (FR-INV-35).
       entity.pool_in = p.count as number;

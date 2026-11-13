@@ -1,0 +1,76 @@
+{
+  "name": "a recount after a hand-out sets what is in and leaves the given total alone",
+  "events": [
+    {
+      "id": "01000000000000000000000001",
+      "entity_type": "item",
+      "entity_id": "kits",
+      "type": "created",
+      "actor_id": "alice",
+      "device_id": "a",
+      "device_seq": 1,
+      "effective_at": 1000,
+      "payload": {
+        "name": "Hygiene kit",
+        "generic": true,
+        "pool": true,
+        "quantity": 10
+      }
+    },
+    {
+      "id": "01000000000000000000000002",
+      "entity_type": "item",
+      "entity_id": "kits",
+      "type": "handed_out",
+      "actor_id": "alice",
+      "device_id": "a",
+      "device_seq": 2,
+      "effective_at": 2000,
+      "payload": {
+        "count": 3
+      }
+    },
+    {
+      "id": "01000000000000000000000003",
+      "entity_type": "item",
+      "entity_id": "kits",
+      "type": "recounted",
+      "actor_id": "alice",
+      "device_id": "a",
+      "device_seq": 3,
+      "effective_at": 3000,
+      "payload": {
+        "count": 9
+      }
+    }
+  ],
+  "state": {
+    "item": {
+      "kits": {
+        "name": "Hygiene kit",
+        "generic": true,
+        "pool": true,
+        "quantity": 10,
+        "added_at": 1000,
+        "modified_at": 1000,
+        "status": "in",
+        "holder_id": null,
+        "pool_in": 9,
+        "pool_out": {},
+        "pool_reservations": {},
+        "pool_given": 3,
+        "movement": {
+          "id": "01000000000000000000000002",
+          "type": "handed_out",
+          "holder_id": null,
+          "event": null,
+          "reservation_id": null,
+          "actor_id": "alice",
+          "device_id": "a",
+          "at": 2000,
+          "count": 3
+        }
+      }
+    }
+  }
+}

@@ -1,7 +1,16 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import type { Item } from "../lib/inventory";
+import { unretireItem } from "../lib/actions";
+import { type Item, wasHandedOut } from "../lib/inventory";
 import type { Weight } from "../lib/weighing";
-import { backFromCleaning, checkIn, checkOut, sendItemHome, transfer, type TransferOptions } from "../lib/movement";
+import {
+  backFromCleaning,
+  checkIn,
+  checkOut,
+  handOut,
+  sendItemHome,
+  transfer,
+  type TransferOptions,
+} from "../lib/movement";
 import { openRepairs, raiseTicket } from "../lib/repairs";
 import { type Session, sessionEvent } from "../lib/session";
 import type { Store } from "../lib/store";
@@ -17,7 +26,14 @@ export const CONFIRM_MS = 1500;
 /** How long a "Checked out · Tent 1" strip stays up. */
 export const MOVED_MS = 4000;
 
-export type MoveKind = "Checked out" | "Returned" | "Transferred" | "Sent home" | "Back from home";
+export type MoveKind =
+  | "Handed out"
+  | "Back in stock"
+  | "Checked out"
+  | "Returned"
+  | "Transferred"
+  | "Sent home"
+  | "Back from home";
 
 /** What a confirmation says: who the gear went home with, or came back from, when a name is given. */
 export function movedText(kind: MoveKind, cleaner?: string): string {
@@ -67,7 +83,8 @@ interface Props {
 type Pending = { kind: MoveKind; to?: string; cleaner?: string; act: (options: TransferOptions) => Promise<unknown> };
 
 /**
- * The buttons that move an item, chosen by its state (FR-OUT-06): Check out when it is in, Return
+ * The buttons that move an item, chosen by its state (FR-OUT-06): Hand out, which gives it away for
+ * good (FR-DST-01), and Check out when it is in; Put back in stock once it was handed out (FR-DST-05); Return
  * when the signed-in person has it, and Return beside Take over, with neither the default, when
  * someone else has it (FR-OUT-12). Anything out can be transferred to another member (FR-OUT-26).
  * A problem raises a ticket once it has moved (FR-OUT-09), or is saved without a move (FR-OUT-27). The shell pushes the move as soon
@@ -179,6 +196,9 @@ export function MoveActions({
   const typed = (fault?.trim() ?? "") !== "";
 
   const checkOutMove: Pending = { kind: "Checked out", act: (o) => checkOut(store, it.id, o) };
+  const handOutMove: Pending = { kind: "Handed out", act: () => handOut(store, it.id) };
+  const backInStock: Pending = { kind: "Back in stock", act: () => unretireItem(store, it.id) };
+  const given = wasHandedOut(it);
   const returnMove: Pending = { kind: "Returned", act: (o) => checkIn(store, it.id, o) };
   const w = weighing(store.state, it);
   useEffect(() => {
@@ -217,7 +237,7 @@ export function MoveActions({
       )}
       {it.retired && (
         <p className="notice" role="note">
-          Retired. Cannot be checked out.
+          {given ? "Handed out. No longer in the inventory." : "Retired. Cannot be checked out."}
         </p>
       )}
       {open.length > 0 && (
@@ -286,7 +306,17 @@ export function MoveActions({
       ) : (
         <>
           {canTake && (
-            <button type="button" className="primary" disabled={holding} onClick={() => start(checkOutMove, true)}>
+            <button type="button" className="primary" disabled={holding} onClick={() => start(handOutMove, false)}>
+              Hand out
+            </button>
+          )}
+          {given && !it.merged_into && (
+            <button type="button" disabled={holding} onClick={() => start(backInStock, false)}>
+              Put back in stock
+            </button>
+          )}
+          {canTake && (
+            <button type="button" disabled={holding} onClick={() => start(checkOutMove, true)}>
               Check out
             </button>
           )}

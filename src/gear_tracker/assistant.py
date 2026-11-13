@@ -309,6 +309,8 @@ def _item_brief(state: dict[str, Any], it: dict[str, Any]) -> dict[str, Any]:
     for flag in ("missing", "retired"):
         if it.get(flag):
             brief[flag] = True
+    if views.was_handed_out(it):
+        brief["handed_out"] = True
     categories = [views.category_name(state, cid) for cid in views.categories_of(state, it)]
     if categories:
         brief["categories"] = categories
@@ -333,6 +335,8 @@ def _row(state: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
         }
         if counts["missing"]:
             out["missing"] = counts["missing"]
+        if counts["given"]:
+            out["handed_out"] = counts["given"]
     else:
         out = {
             "kind": "generic",
@@ -412,8 +416,8 @@ def _history(conn: sqlite3.Connection, state: dict[str, Any], item_id: str) -> l
         SELECT * FROM events
         WHERE entity_type = 'item' AND entity_id IN ({marks})
         AND type IN (
-            'checked_out', 'checked_in', 'recounted', 'pool_missing', 'pool_found', 'pool_written_off',
-            'cleaning_ended', 'cleaning_started'
+            'checked_out', 'checked_in', 'handed_out', 'recounted', 'pool_missing', 'pool_found',
+            'pool_written_off', 'cleaning_ended', 'cleaning_started'
         )
         ORDER BY effective_at DESC, device_id DESC, device_seq DESC LIMIT ?
         """,
@@ -524,6 +528,8 @@ def get_item(item_id: str) -> dict[str, Any]:
             out["in"] = counts["in"]
             if counts["missing"]:
                 out["missing"] = counts["missing"]
+            if counts["given"]:
+                out["handed_out"] = counts["given"]
             out["out"] = [
                 {"holder_id": o["holder_id"], "holder": views.user_name(state, o["holder_id"]), "count": o["count"]}
                 for o in counts["out"]
@@ -2008,6 +2014,34 @@ def _left(state: dict[str, Any], item_id: str) -> dict[str, Any] | None:
     return {**left, "at": views.iso(left["at"])} if left else None
 
 
+def hand_out(item_id: str, count: Count | None = None) -> dict[str, Any]:
+    """Give goods away for good (FR-DST-01). Nothing is expected back, and nobody is recorded as receiving them.
+
+    A pool (FR-INV-34) needs `count`, and more than are in is refused; recount first if there are more
+    (FR-DST-03). Anything else refuses a count and goes whole: it leaves the inventory as a retired item does,
+    and `retire_item` with `retired` false brings it back if it was handed out by mistake (FR-DST-05).
+    """
+    with _open() as (conn, who):
+        state = _state(conn)
+        it = _item(state, item_id)
+        pool = views.is_pool(it)
+        if it.get("generic") and not pool:
+            raise BadRequest("that item is not handed out; one of its units is")
+        if pool and count is None:
+            raise BadRequest("a pool is handed out by count; say how many")
+        if not pool and count is not None:
+            raise BadRequest("count is only for a pool (FR-DST-02)")
+        if pool and count > (have := views.pool_counts(it)["in"]):
+            raise BadRequest(f"only {have} in; recount first if there are more")
+        if not pool and it.get("retired"):
+            raise Conflict("already handed out" if views.was_handed_out(it) else "retired items are not handed out")
+        _push(conn, who, [_draft("item", it["id"], "handed_out", {"count": count} if pool else {})])
+        if not pool:
+            return {"item_id": it["id"], "handed_out": True}
+        counts = views.pool_counts(_item(_state(conn), item_id))
+        return {"item_id": it["id"], "count": count, "in": counts["in"], "handed_out": counts["given"]}
+
+
 def recount(item_id: str, count: Annotated[StrictInt, Field(ge=0)], reason: str | None = None) -> dict[str, Any]:
     """Record how many of a pool are in right now (FR-INV-35). Anyone signed in; pool only.
 
@@ -2998,6 +3032,7 @@ TOOLS = [
     resolve_found_report,
     check_out,
     check_in,
+    hand_out,
     weigh,
     refilled,
     recount,

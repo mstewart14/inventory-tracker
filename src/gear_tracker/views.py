@@ -263,16 +263,22 @@ def amount_left(state: State, it: Fields, w: Fields | None = None) -> Fields | N
     }
 
 
+def was_handed_out(it: Fields) -> bool:
+    """A single item or unit that left for good (FR-DST-01), until it is unretired (FR-DST-05).
+    Mirrors wasHandedOut in inventory.ts."""
+    return bool(it.get("retired")) and (it.get("movement") or {}).get("type") == "handed_out"
+
+
 def pool_counts(it: Fields) -> Fields:
-    """Owned, in, missing, and out by holder (FR-INV-36). Mirrors poolCounts in inventory.ts. Holders at zero are
-    absent. Owned is in, out and missing together."""
+    """Owned, in, missing, given, and out by holder (FR-INV-36). Mirrors poolCounts in inventory.ts. Holders at
+    zero are absent. Owned is in, out and missing together; what was given away is no longer owned (FR-DST-01)."""
     pool_in = it.get("pool_in") or 0
     out = [
         {"holder_id": holder_id, "count": count} for holder_id, count in (it.get("pool_out") or {}).items() if count > 0
     ]
     missing = it.get("pool_missing") or 0
     owned = pool_in + sum(o["count"] for o in out) + missing
-    return {"owned": owned, "in": pool_in, "missing": missing, "out": out}
+    return {"owned": owned, "in": pool_in, "missing": missing, "given": it.get("pool_given") or 0, "out": out}
 
 
 def pool_lots(it: Fields) -> list[Fields]:

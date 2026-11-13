@@ -1,5 +1,5 @@
 /** Text the screens share. Pure functions over state. */
-import { type Item, type Row, displayName, purchaseOf, userName } from "../lib/inventory";
+import { type Item, type Row, displayName, purchaseOf, userName, wasHandedOut } from "../lib/inventory";
 import type { State } from "../lib/replay";
 import type { SyncOutcome } from "../lib/sync";
 import { ago } from "../lib/time";
@@ -7,8 +7,9 @@ import { amountLeft, leftLabel } from "../lib/weighing";
 
 export { userName };
 
-/** "In", "Out · Alice", or "Missing" (FR-INV-19). */
+/** "In", "Out · Alice", "Missing" (FR-INV-19), or "Handed out" (FR-DST-01). */
 export function statusLabel(state: State, it: Item): string {
+  if (wasHandedOut(it)) return "Handed out";
   if (it.missing) return "Missing";
   return it.status === "out" ? `Out · ${userName(state, it.holder_id)}` : "In";
 }
@@ -35,6 +36,7 @@ export function countsLabel(row: Row & { kind: "generic" | "pool" }): string {
  * or "Out with Sam · 2 days ago".
  */
 export function holdingLabel(state: State, it: Item, me: string | undefined, now: number): string {
+  if (wasHandedOut(it)) return `Handed out${it.since != null ? ` · ${ago(now - it.since)}` : ""}`;
   if (it.missing) return "Missing";
   if (it.status !== "out") return "In";
   const since = it.since != null ? ` · ${ago(now - it.since)}` : "";

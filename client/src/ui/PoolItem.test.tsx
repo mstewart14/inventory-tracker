@@ -535,3 +535,45 @@ test("a family's name is corrected on the stack's page, for every Scouter's lots
   expect(names.filter(Boolean)).toEqual(["Smith", "Smith", "Smith"]);
   expect(store.pending.filter((e) => e.type === "cleaner_corrected")).toHaveLength(2);
 });
+
+test("a pool hands out by count, and what was given leaves what is owned (FR-DST-02)", async () => {
+  const socks = await act.createPool(store, { name: "Socks" }, 20);
+  navigate(`/items/${socks}`);
+  renderInShell(<ItemPage store={store} id={socks} />);
+
+  expect(screen.getByRole("button", { name: "Hand out" })).toHaveClass("primary");
+  await user.click(screen.getByRole("button", { name: "Hand out" }));
+  const count = screen.getByLabelText("How many");
+  expect(count).toHaveValue(1);
+  await user.clear(count);
+  await user.type(count, "6");
+  await user.click(screen.getByRole("button", { name: "Hand out" }));
+  expect(await screen.findByText("Handed out 6 · Socks")).toBeInTheDocument();
+  expect(store.pending.at(-1)).toMatchObject({ type: "handed_out", payload: { count: 6 } });
+  expect(fact("Owned")).toBe("14");
+  expect(fact("In")).toBe("14");
+  expect(fact("Handed out")).toBe("6");
+});
+
+test("handing out more of a pool than are in is refused, offering a recount that returns to it (FR-DST-03)", async () => {
+  const socks = await act.createPool(store, { name: "Socks" }, 3);
+  navigate(`/items/${socks}`);
+  renderInShell(<ItemPage store={store} id={socks} />);
+
+  await user.click(screen.getByRole("button", { name: "Hand out" }));
+  const count = screen.getByLabelText("How many");
+  await user.clear(count);
+  await user.type(count, "5");
+  expect(screen.getByText("Only 3 in. Are there more here?")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Hand out" })).toBeDisabled();
+
+  await user.click(screen.getByRole("button", { name: "Recount" }));
+  const now = screen.getByLabelText("How many");
+  await user.clear(now);
+  await user.type(now, "8");
+  await user.click(screen.getByRole("button", { name: "Recount" }));
+  // Back on the hand-out it was after, with the count it wanted.
+  await waitFor(() => expect(screen.getByLabelText("How many")).toHaveValue(5));
+  await user.click(screen.getByRole("button", { name: "Hand out" }));
+  await waitFor(() => expect(inv.poolCounts(inv.item(store.state, socks)!)).toMatchObject({ in: 3, given: 5 }));
+});

@@ -44,6 +44,7 @@ import {
   search,
   takesUnits,
   unitsOf,
+  wasHandedOut,
 } from "../lib/inventory";
 import { itemReservations } from "../lib/itemReservations";
 import {
@@ -59,6 +60,7 @@ import {
   correctPoolCleaner,
   type HistoryEntry,
   recount,
+  handOutPool,
 } from "../lib/movement";
 import { openRepairs, raiseTicket, type Repair, repairsFor, stateLabel } from "../lib/repairs";
 import { type Log, useRecord } from "../lib/record";
@@ -328,7 +330,7 @@ export function ItemPage({ store, id }: Props) {
           )}
           <h2 className="item-title">
             {displayName(state, it)}
-            {it.retired && <span className="badge">Retired</span>}
+            {it.retired && <span className="badge">{wasHandedOut(it) ? "Handed out" : "Retired"}</span>}
             {it.missing && <span className="badge">Missing</span>}
           </h2>
           {it.status === "out" && !it.missing && (
@@ -763,6 +765,7 @@ export function describeMovement(state: State, e: HistoryEntry): string {
   const who = userName(state, e.actor_id);
   const when = localMinute(e.at);
   // A pool's lines carry a count instead of the whole item (FR-INV-34, FR-INV-35).
+  if (e.type === "handed_out") return `Handed out${e.count != null ? ` ${e.count}` : ""} by ${who} · ${when}`;
   if (e.type === "recounted") return `Recounted to ${e.count} by ${who}${e.reason ? `: ${e.reason}` : ""} · ${when}`;
   if (e.type === "pool_missing") {
     const from = e.holder_id && e.holder_id !== e.actor_id ? ` from ${userName(state, e.holder_id)}` : "";
@@ -1522,6 +1525,12 @@ function PoolPage({
             <dd>{counts.missing}</dd>
           </>
         )}
+        {counts.given > 0 && (
+          <>
+            <dt>Handed out</dt>
+            <dd>{counts.given}</dd>
+          </>
+        )}
         {cleaningShares(it).length > 0 && (
           <>
             <dt>At home with</dt>
@@ -1631,10 +1640,10 @@ function cleaningShares(it: Item) {
   return [...found.values()];
 }
 
-type PoolMode = "out" | "in" | "recount" | "home" | "back" | "missing" | "found" | "writeoff";
+type PoolMode = "give" | "out" | "in" | "recount" | "home" | "back" | "missing" | "found" | "writeoff";
 
 /**
- * Check out, return, recount, and mark missing or found a pool, by count (FR-OUT-22, FR-OUT-23,
+ * Hand out for good (FR-DST-02), check out, return, recount, and mark missing or found a pool, by count (FR-OUT-22, FR-OUT-23,
  * FR-INV-35, FR-INV-46, FR-INV-47). More than are in is refused, offering a recount first (FR-OUT-55). A check-out asks
  * the session's event first, as any check-out does (FR-OUT-05), unless
  * `session` is a reservation's packing session (FR-RES-03).
@@ -1650,7 +1659,10 @@ export function PoolActions({
   it: Item;
   session?: Session;
   /** What was done, and which way it went: a scan during a packing session grows the reservation on "out". */
-  onMoved: (message: string, kind: "out" | "in" | "recount" | "back" | "missing" | "found" | "writeoff") => void;
+  onMoved: (
+    message: string,
+    kind: "give" | "out" | "in" | "recount" | "back" | "missing" | "found" | "writeoff",
+  ) => void;
   children?: React.ReactNode;
 }) {
   const [mode, setMode] = useState<PoolMode | null>(null);
@@ -1662,8 +1674,9 @@ export function PoolActions({
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // The count a refused check-out was after; a recount then returns to it.
+  // The count a refused hand-out or check-out was after; a recount then returns to it.
   const [resume, setResume] = useState<number | null>(null);
+  const [resumeTo, setResumeTo] = useState<"give" | "out">("out");
   const state = store.state;
   const me = store.meta.user?.id;
   // Read when the move is made (FR-OUT-05): before the event is answered, a check-out waits for it.
@@ -1704,6 +1717,7 @@ export function PoolActions({
   }
 
   function recountFirst() {
+    setResumeTo(mode === "give" ? "give" : "out");
     setResume(n);
     open("recount");
   }
@@ -1736,16 +1750,19 @@ export function PoolActions({
   const sendable = (poolLots(it).find((o) => o.holder_id === me)?.lots ?? [])
     .filter((l) => !l.cleaner)
     .reduce((total, l) => total + l.count, 0);
-  const overdraw = mode === "out" && validCount && n > counts.in;
+  const takes = mode === "out" || mode === "give";
+  const overdraw = takes && validCount && n > counts.in;
   const overSend = mode === "home" && validCount && n > sendable;
   const needsName = mode === "home" && cleaner.trim() === "";
 
   async function submit(amount: number) {
-    if (busy || !mode || !valid(amount) || needsName || overSend || (mode === "out" && amount > counts.in)) return;
+    if (busy || !mode || !valid(amount) || needsName || overSend || (takes && amount > counts.in)) return;
     setBusy(true);
     setError(null);
     try {
-      if (mode === "out") {
+      if (mode === "give") {
+        await handOutPool(store, it.id, amount);
+      } else if (mode === "out") {
         const { event, reservation_id, waits } = recorded();
         await checkOutPool(store, it.id, {
           count: amount,
@@ -1791,26 +1808,28 @@ export function PoolActions({
         setMode(null);
         return;
       }
-      open("out");
+      open(resumeTo);
       setCount(String(back));
       return;
     }
     const label =
-      mode === "out"
-        ? `Checked out ${amount}`
-        : mode === "home"
-          ? `Sent home ${amount} to ${cleaner.trim()}`
-          : mode === "back"
-            ? `Back from ${homeShare?.cleaner ?? "home"} ${amount}`
-            : mode === "in"
-              ? `Returned ${amount}`
-              : mode === "missing"
-                ? `Marked ${amount} missing`
-                : mode === "found"
-                  ? `Found ${amount}`
-                  : mode === "writeoff"
-                    ? `Wrote off ${amount}`
-                    : `Recounted to ${amount}`;
+      mode === "give"
+        ? `Handed out ${amount}`
+        : mode === "out"
+          ? `Checked out ${amount}`
+          : mode === "home"
+            ? `Sent home ${amount} to ${cleaner.trim()}`
+            : mode === "back"
+              ? `Back from ${homeShare?.cleaner ?? "home"} ${amount}`
+              : mode === "in"
+                ? `Returned ${amount}`
+                : mode === "missing"
+                  ? `Marked ${amount} missing`
+                  : mode === "found"
+                    ? `Found ${amount}`
+                    : mode === "writeoff"
+                      ? `Wrote off ${amount}`
+                      : `Recounted to ${amount}`;
     setBusy(false);
     setMode(null);
     onMoved(`${label} · ${displayName(state, it)}`, mode === "home" ? "out" : mode);
@@ -1923,7 +1942,7 @@ export function PoolActions({
         </label>
       )}
       {mode === "out" && !waits && <p className="muted small event-hint">{event ? `Event: ${event}` : "No event"}</p>}
-      {(mode === "out" ? counts.in : mode === "home" ? sendable : 0) > 1 && (
+      {(takes ? counts.in : mode === "home" ? sendable : 0) > 1 && (
         <div className="row">
           <button type="button" disabled={busy} onClick={() => void submit(mode === "home" ? sendable : counts.in)}>
             All {mode === "home" ? sendable : counts.in}
@@ -1933,21 +1952,23 @@ export function PoolActions({
       {mode ? (
         <div className="row" key="go">
           <button type="submit" className="primary" disabled={busy || !validCount || needsName || overSend || overdraw}>
-            {mode === "out"
-              ? "Check out"
-              : mode === "home"
-                ? "Send home"
-                : mode === "back"
-                  ? "Back from home"
-                  : mode === "in"
-                    ? "Return"
-                    : mode === "missing"
-                      ? "Mark missing"
-                      : mode === "found"
-                        ? "Found"
-                        : mode === "writeoff"
-                          ? "Write off"
-                          : "Recount"}
+            {mode === "give"
+              ? "Hand out"
+              : mode === "out"
+                ? "Check out"
+                : mode === "home"
+                  ? "Send home"
+                  : mode === "back"
+                    ? "Back from home"
+                    : mode === "in"
+                      ? "Return"
+                      : mode === "missing"
+                        ? "Mark missing"
+                        : mode === "found"
+                          ? "Found"
+                          : mode === "writeoff"
+                            ? "Write off"
+                            : "Recount"}
           </button>
           <button
             type="button"
@@ -1961,7 +1982,10 @@ export function PoolActions({
         </div>
       ) : (
         <div className="row" key="pick">
-          <button type="button" className="primary" onClick={() => open("out")}>
+          <button type="button" className="primary" onClick={() => open("give")}>
+            Hand out
+          </button>
+          <button type="button" onClick={() => open("out")}>
             Check out
           </button>
           {counts.out.length > 0 && (

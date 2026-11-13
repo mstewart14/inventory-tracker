@@ -4,7 +4,7 @@
  * syncs afterwards (FR-OFF-03).
  */
 import { seen } from "./actions";
-import { aliases, isPool, item, type Item, poolCounts, poolLots } from "./inventory";
+import { aliases, isPool, item, type Item, poolCounts, poolLots, wasHandedOut } from "./inventory";
 import * as notes from "./notes";
 import type { Log } from "./record";
 import { eventNameKey, tidyName } from "./calendar";
@@ -387,6 +387,25 @@ export async function sendHomeFromPool(store: Store, itemId: string, options: Se
   return move(store, itemId, "cleaning_started", payload, session);
 }
 
+/**
+ * Give a single item or a unit away for good (FR-DST-01). It leaves the inventory as a retired item
+ * does; Unretire brings back one handed out by mistake (FR-DST-05).
+ */
+export async function handOut(store: Store, itemId: string) {
+  const it = current(store, itemId);
+  if (it.retired) throw new Error(wasHandedOut(it) ? "already handed out" : "retired items are not handed out");
+  if (it.merged_into) throw new Error("merged into another item");
+  return move(store, itemId, "handed_out", {});
+}
+
+/** Give some of a pool away for good (FR-DST-02). More than are in is refused (FR-DST-03). */
+export async function handOutPool(store: Store, itemId: string, count: number) {
+  const it = poolItem(store, itemId);
+  if (!Number.isInteger(count) || count < 1) throw new Error("pick a count of at least 1");
+  refuseOverdraw(it, count);
+  return move(store, itemId, "handed_out", { count });
+}
+
 /** How many are in right now, with an optional reason (FR-INV-35). What is already out is untouched; anyone signed in may record one. */
 export async function recount(store: Store, itemId: string, count: number, reason?: string) {
   poolItem(store, itemId);
@@ -749,6 +768,7 @@ export interface HistoryEntry {
   type:
     | "checked_out"
     | "checked_in"
+    | "handed_out"
     | "recounted"
     | "pool_missing"
     | "pool_found"
@@ -790,6 +810,7 @@ export function history(log: Log, itemId: string): HistoryEntry[] {
       (e) =>
         e.type === "checked_out" ||
         e.type === "checked_in" ||
+        e.type === "handed_out" ||
         e.type === "recounted" ||
         e.type === "pool_missing" ||
         e.type === "pool_found" ||
