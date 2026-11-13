@@ -286,7 +286,6 @@ Reachable by scanning a label or following a link, with no sign-in.
 | ID        | Priority | Requirement                                                                                                                                                                                                                                     |
 | --------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | FR-USR-01 | Must     | Users sign in with an account tied to an email address.                                                                                                                                                                                         |
-| FR-USR-02 | Must     | Two roles: **Admin** (everything, including managing users and settings) and **User** (everything operational: add and edit items, check in and out, reserve, raise tickets).                                                                   |
 | FR-USR-03 | Must     | The last Admin cannot be demoted or deactivated.                                                                                                                                                                                                |
 | FR-USR-04 | Must     | Admins can invite and deactivate users, and change a user's role, name, or email.                                                                                                                                                               |
 | FR-USR-05 | Must     | An audit log records who changed what, and when: item edits, check-outs, check-ins, and every change to users — invited, deactivated, reactivated, role changed. Edits store the field, its old value, and its new value, not a whole snapshot. |
@@ -298,6 +297,11 @@ Reachable by scanning a label or following a link, with no sign-in.
 | FR-USR-22 | Must     | An Admin cannot drop their own role. Another Admin does it, or the command line (FR-USR-13) does when no Admin is left.                                                                                                                         |
 | FR-USR-23 | Must     | An Admin cannot deactivate their own account from the Users list. Another Admin does it, or they delete it themself (FR-USR-25).                                                                                                                |
 | FR-USR-25 | Must     | Anyone signed in can delete their own account from Settings, after one confirm. This deactivates it, the same as an Admin does (FR-USR-03, FR-USR-06).                                                                                          |
+| FR-USR-36 | Must     | Three roles: **Administrator**, **Staff**, and **Outreach**.                                                                                                                                                                                    |
+| FR-USR-37 | Must     | An Administrator can do everything, including managing users and settings.                                                                                                                                                                      |
+| FR-USR-38 | Must     | Staff can record donations, edit items, place holds (FR-HLD-04), put held goods back (FR-HLD-10), and hand goods out (FR-HLD-16).                                                                                                               |
+| FR-USR-39 | Must     | Outreach can see the items marked for them (FR-VIS-02), request holds (FR-HLD-05), and book collection (FR-HLD-14). Nothing else.                                                                                                               |
+| FR-USR-40 | Must     | An invite or a standing join link (FR-USR-12, FR-USR-19) names the role its account gets.                                                                                                                                                       |
 | FR-USR-09 | Should   | The Quartermaster can read an item's audit history from its detail page.                                                                                                                                                                        |
 | FR-USR-14 | Should   | An Admin can revoke one device without deactivating its account, for a phone that was lost or sold.                                                                                                                                             |
 | FR-USR-15 | Should   | The server mails invite and reset links itself, from one SMTP account an Admin fills in. Optional: a group that sets none up pays for no mail service (NFR-DEP-04).                                                                             |
@@ -320,6 +324,7 @@ Reachable by scanning a label or following a link, with no sign-in.
 | FR-USR-10 | Could    | Sign in with Google, to avoid managing passwords (NFR-SEC-02).                                                                                                                                                                                  |
 | FR-USR-24 | Could    | An Admin can read the whole audit log on one screen, filtered by event type, user, and date range. It reads from the server, so it needs signal.                                                                                                |
 | FR-USR-11 | Won't    | Withdrawn: shared-device mode. Personal phones only.                                                                                                                                                                                            |
+| FR-USR-02 | Won't    | Withdrawn: two roles, Admin and User. Replaced by FR-USR-36.                                                                                                                                                                                    |
 
 ## 9. Reports and data (RPT)
 
@@ -432,3 +437,58 @@ the home screen to escape eviction (NFR-DEP-06), and pending work is visible eno
 | FR-MCP-55 | Won't    | No tool opens Home or focuses search (FR-INV-76). Navigation only; `search_items` searches.                                                                                                                                                                                                                                                                                                                                                                                                      |
 | FR-MCP-56 | Won't    | No tool focuses a field (FR-RES-46). Layout only; `create_reservation` takes the name.                                                                                                                                                                                                                                                                                                                                                                                                           |
 | FR-MCP-57 | Won't    | No tool groups the gear to link by event (FR-RES-47). Layout only; `whats_out` already gives each item's event.                                                                                                                                                                                                                                                                                                                                                                                  |
+
+## 12. Holds (HLD)
+
+A hold sets goods aside for a client. It replaces the reservation of section 5, which plans an event and expects the
+gear back.
+
+| ID        | Priority | Requirement                                                                                                                                                                |
+| --------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-HLD-01 | Must     | A hold sets aside a single item, a unit, or a count of a pool (FR-INV-34) for one client.                                                                                  |
+| FR-HLD-02 | Must     | A hold names its client by a handle, typed by whoever places or requests it.                                                                                               |
+| FR-HLD-03 | Must     | A hold cannot be created without an expiry date in the future.                                                                                                             |
+| FR-HLD-04 | Must     | A hold placed by Staff or an Administrator takes effect at once.                                                                                                           |
+| FR-HLD-05 | Must     | Outreach requests a hold for a client. It sets nothing aside until approved.                                                                                               |
+| FR-HLD-06 | Must     | Only an Administrator can approve or decline an Outreach request.                                                                                                          |
+| FR-HLD-07 | Must     | Outreach sees the state of each of their own requests: waiting, approved, declined, expired, handed out.                                                                   |
+| FR-HLD-08 | Must     | Goods on hold cannot be held for, or handed out to, anyone else.                                                                                                           |
+| FR-HLD-09 | Must     | A hold's expiry can be moved to a new date in the future, while the hold is live.                                                                                          |
+| FR-HLD-10 | Must     | Staff and Administrators can put held goods back into general stock, which ends the hold.                                                                                  |
+| FR-HLD-11 | Must     | A hold that passes its expiry ends, and its goods go back into general stock.                                                                                              |
+| FR-HLD-12 | Must     | When a hold expires, everyone named on it (FR-HLD-26) is notified.                                                                                                         |
+| FR-HLD-13 | Must     | A hold notification appears in the app, and is mailed when a mail account is set up (FR-USR-15).                                                                           |
+| FR-HLD-14 | Must     | Outreach books how an approved hold is collected: in person, or by delivery.                                                                                               |
+| FR-HLD-15 | Must     | A delivery records a time and a drop-off point. Nothing else.                                                                                                              |
+| FR-HLD-16 | Must     | Staff and Administrators hand held goods out. The hold ends and the goods leave the inventory.                                                                             |
+| FR-HLD-17 | Must     | A client's handle is removed from a hold once the goods are handed out or the hold has ended and its notifications are sent.                                               |
+| FR-HLD-18 | Must     | The system holds nothing about a client but the handle on a live hold.                                                                                                     |
+| FR-HLD-19 | Must     | No notification is addressed to a client.                                                                                                                                  |
+| FR-HLD-20 | Must     | Staff and Administrators can move the expiry of any live hold (FR-HLD-09).                                                                                                 |
+| FR-HLD-21 | Must     | Outreach can move the expiry of a hold they requested, with no new approval.                                                                                               |
+| FR-HLD-22 | Must     | When Outreach moves a hold's expiry, every Administrator is notified.                                                                                                      |
+| FR-HLD-24 | Must     | Deliveries are made by Staff.                                                                                                                                              |
+| FR-HLD-25 | Must     | A delivery names the Staff member making it, once one has taken it.                                                                                                        |
+| FR-HLD-26 | Must     | The people named on a hold are whoever placed or requested it, whoever approved it, and the Staff member making its delivery.                                              |
+| FR-HLD-27 | Must     | When a hold's expiry is moved, everyone named on it is notified, except whoever moved it.                                                                                  |
+| FR-HLD-28 | Must     | When held goods are put back (FR-HLD-10), everyone named on the hold is notified, except whoever put them back.                                                            |
+| FR-HLD-23 | Won't    | Withdrawn: telling the Staff member making a delivery when Outreach moves a hold's expiry. Replaced by FR-HLD-27, which tells everyone named on the hold whoever moves it. |
+
+## 13. Visibility and the public catalogue (VIS)
+
+Staff see everything. An item is shown to anyone else only when someone has marked it.
+
+| ID        | Priority | Requirement                                                                                                              |
+| --------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| FR-VIS-01 | Must     | Every item, generic and pool carries a visibility: **Staff only**, **Outreach**, or **Public**. A new one is Staff only. |
+| FR-VIS-02 | Must     | Outreach sees items marked Outreach or Public, and no others.                                                            |
+| FR-VIS-03 | Must     | An Outreach device is sent only what Outreach may see (FR-VIS-02, FR-HLD-07).                                            |
+| FR-VIS-04 | Must     | A catalogue of the items marked Public opens with no sign-in.                                                            |
+| FR-VIS-05 | Must     | The public catalogue shows an item's name, description and photos. No counts, locations, sources, holds or people.       |
+| FR-VIS-06 | Must     | The public catalogue says how to reach the society and that goods are arranged with its staff, in person or by contact.  |
+| FR-VIS-07 | Must     | Nothing can be requested, held or handed out from the public catalogue.                                                  |
+| FR-VIS-08 | Must     | Staff and Administrators set an item's visibility.                                                                       |
+| FR-VIS-09 | Must     | For an item Outreach may see, they see its description, photos, location, and how many are available.                    |
+| FR-VIS-10 | Must     | Outreach sees no hold but their own.                                                                                     |
+| FR-VIS-11 | Must     | Goods on someone else's hold are left out of the count Outreach sees, with nothing to say they are held.                 |
+| FR-VIS-12 | Must     | An item with none available, and no hold of theirs on it, is not shown to Outreach.                                      |

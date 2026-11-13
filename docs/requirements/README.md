@@ -1,13 +1,19 @@
-# Gear Tracker requirements
+# Inventory Tracker requirements
 
-Gear inventory for a single Scout group.
+Donation inventory for an overdose prevention society in Vancouver's Downtown Eastside.
 
-## Why build it
+The society collects donated goods, stores them, holds them for clients and support workers, and gives them out.
 
-Gear is tracked on paper and in a spreadsheet. Nobody knows what is out and who has it.
+## Where this came from
 
-Commercial options work but assume a live internet connection. Our lockers and yard have unreliable signal. A tool that
-dies at the locker door will not get used.
+This is an independent project that started as a copy of
+[Gear Tracker](https://github.com/varju/10th-richmond-gear-tracker), a gear inventory for a Scout group. Intake is the
+same job: a wide variety of things arrive and each needs a name, a place, and a label. What happens after is not. Scout
+gear is lent and comes back. Donations leave for good.
+
+The functional requirements, non-functional requirements and stories still describe the Scout version, apart from roles
+(FR-USR-36 on), holds (section 12) and visibility (section 13), which are written for the society and not built yet.
+Until a section is rewritten, read it as what the code does today, not what the society needs.
 
 ## Documents
 
@@ -16,38 +22,93 @@ dies at the locker door will not get used.
 | [functional-requirements.md](functional-requirements.md)         | What it must do |
 | [non-functional-requirements.md](non-functional-requirements.md) | How well        |
 
+## What it does
+
+| Step       | What happens                                                               |
+| ---------- | -------------------------------------------------------------------------- |
+| Intake     | A donation arrives. Each thing, or each stack of things, is recorded.      |
+| Storage    | It goes on a shelf. The system knows which one.                            |
+| Hold       | Some of it is set aside for a named client or support worker.              |
+| Distribute | It is handed over and leaves the inventory. Nothing is expected to return. |
+
 ## People
 
-| Role          | Count | Does                                                                        |
-| ------------- | ----- | --------------------------------------------------------------------------- |
-| Quartermaster | 1-2   | Owns the inventory. Adds gear, prints labels, runs reports, closes tickets. |
-| Scouter       | 5-15  | Checks gear out, returns it, reports damage.                                |
-| Public        | Any   | Scans found gear and reports it. No account.                                |
+Three roles sign in.
 
-Quartermaster and Scouter are what the group calls people. The system has two roles (FR-USR-02): a Quartermaster holds
-**Admin**, a Scouter holds **User**.
+| Role          | Who                                | Can                                                                                                                 |
+| ------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Administrator | The society                        | Everything, including approving Outreach requests, users and settings                                               |
+| Staff         | The society                        | Record donations, place holds, put held goods back into general stock, hand goods out                               |
+| Outreach      | A worker from another organization | Request a hold, which an Administrator must approve. Book how approved goods are collected: in person, or delivered |
 
-## Where gear lives
+Two kinds of people never sign in.
 
-| Location         | Notes                               |
-| ---------------- | ----------------------------------- |
-| Cold locker      | Unheated. Below freezing in winter. |
-| Warm locker      | Heated.                             |
-| Garry Point yard | Outdoors. Holds trailers.           |
+| Person | Does                                                      |
+| ------ | --------------------------------------------------------- |
+| Client | Receives goods. No account, and no record beyond a handle |
+| Donor  | Gives goods. No account                                   |
 
-Each splits into numbered shelves or a specific trailer. Every item has a **home**: location plus shelf, e.g. "Warm
-locker / shelf 4" (FR-SET-03). Telling Scouters where gear goes back is where inventories usually break down.
+## Decisions
 
-Two of the three locations are too cold or too wet for a tablet left on site, so we use personal phones only.
+**Clients are not identified.** A hold says who it is for with a handle or initials typed by whoever places it. There
+are no client accounts and no client fields. The handle is removed once the goods are handed out or the hold has ended.
 
-## Scale
+**Nobody gets goods without contact with the society's staff.** The public catalogue shows what may be available and how
+to get in touch. It takes no requests.
 
-Planning numbers, not limits.
+**Items are shown outside the society only when marked.** Each item is Staff only, Outreach, or Public. Outreach workers
+see what is marked for them; the public catalogue shows what is marked Public.
 
-- 200-500 items
-- 15 accounts
-- 10-20 events per year
-- Peak: 3-4 people checking out 50 items in 30 minutes on a Friday evening
+**Every hold has an end date.** It is set when the hold is made and can be moved later. A hold that runs out goes back
+into general stock, and everyone involved is told.
+
+**Only an Administrator approves an Outreach request,** for now.
+
+**Staff are trusted.** A hold placed by Staff needs no approval.
+
+**The system never contacts a client.** It has no way to. Staff or the Outreach worker pass news on.
+
+**A delivery is a time and a drop-off point.** No address book, no recipient details. Staff make deliveries.
+
+**Anyone on a hold can move its end date.** Staff and Administrators can move any hold's. An Outreach worker can move
+their own with no new approval; Administrators are told.
+
+**Anyone named on a hold hears when it changes.** That is whoever placed or requested it, whoever approved it, and the
+Staff member delivering it. They are told when it expires, when its end date moves, and when its goods are put back.
+
+**Outreach sees what is available, once an item is marked for them:** its location and how many can be requested. Goods
+on someone else's hold are simply not there.
+
+**The found-item pages stay for now** (section 7). They are expected to turn into a page saying where an item came from
+and how to ask the society for things like it.
+
+**A donation's source is optional.** Intake can record where a donation came from, and never requires it.
+
+**Offline first.** Recording, searching and handing out work with no network.
+
+**No iPhone app for now.** The web app is the only client. The iPhone app inherited from Gear Tracker is on hold.
+
+**No procurement for now.** Buying stock may come later. Nothing is designed for it yet.
+
+**No repairs, weights or cleaning.** Repair tickets (section 6), weighing and refilling (FR-INV-62 on), and sending gear
+home for cleaning (FR-OUT-46 on) are dropped. Each requirement moves to Won't in the change that removes its code.
+
+**No calendars for now.** Calendar feeds (FR-RES-20) are not used in the first version. A calendar of holds and
+deliveries is wanted later.
+
+## Open questions
+
+- Does Public include Outreach, or can an item be Public and hidden from Outreach? Assumed for now: Public includes
+  Outreach. To confirm with the society.
+- Does the public catalogue show how many are available? No for now (FR-VIS-05).
+- Does Outreach still see an item when none is available (FR-VIS-12)? Assumed: no.
+- Is a delivery taken by one named Staff member (FR-HLD-25)? Assumed, so that there is someone to tell.
+- How many people hold each role?
+- Where are goods stored, and how is that space divided?
+- How many items and stacks are on hand, and how much moves in a day?
+- What do a donation drop-off and a pickup look like, step by step? Not known yet; to learn from the society.
+- How is a client's handle removed (FR-HLD-17) when the event log is append-only (NFR-DATA-02)? Gear Tracker could not
+  erase a name from its log (NFR-SEC-27). The handle likely has to live outside the log.
 
 ## Conventions
 

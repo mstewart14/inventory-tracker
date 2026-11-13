@@ -1,14 +1,16 @@
-# Gear Tracker
+# Inventory Tracker
 
-Gear inventory for a Scout group. Tracks what we own, where it lives, who has it, and what needs fixing.
+Donation inventory for an overdose prevention society in Vancouver's Downtown Eastside. Tracks what was donated, where
+it is stored, what is held for whom, and what was given out.
 
-It works with no signal. Gear lives in lockers and an outdoor yard where phones have none, so the app holds a full copy
-on the device and syncs when a connection comes back.
+It works with no signal. The app holds a full copy on the device and syncs when a connection comes back.
 
 ## Status
 
-Early build. The requirements are settled and the scanner is proven; the application is not written yet. See
-[docs/tasks.md](docs/tasks.md) for what is being built and in what order.
+Being refocused. This started as a copy of [Gear Tracker](https://github.com/varju/10th-richmond-gear-tracker), a gear
+inventory for a Scout group, and the code still behaves like one. [docs/requirements/](docs/requirements/README.md) says
+what the society needs and what is still undecided. The rest of the documentation describes the Scout version until each
+part is rewritten.
 
 ## Documentation
 
@@ -18,7 +20,7 @@ Early build. The requirements are settled and the scanner is proven; the applica
 | [docs/requirements/](docs/requirements/README.md)                                                    | Context, people, scale, locations |
 | [docs/requirements/functional-requirements.md](docs/requirements/functional-requirements.md)         | What it must do (FR-\*)           |
 | [docs/requirements/non-functional-requirements.md](docs/requirements/non-functional-requirements.md) | How well (NFR-\*)                 |
-| [docs/stories/](docs/stories/README.md)                                                              | What a Friday evening looks like  |
+| [docs/stories/](docs/stories/README.md)                                                              | What a day of use looks like      |
 | [docs/tasks.md](docs/tasks.md)                                                                       | The build, in order               |
 | [docs/deploy.md](docs/deploy.md)                                                                     | Running your own copy             |
 
@@ -49,4 +51,4 @@ One container on a machine at home, with the database as a file beside it. See [
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). Gear Tracker's copyright notice stays in it.
