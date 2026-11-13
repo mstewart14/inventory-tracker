@@ -269,6 +269,45 @@ def was_handed_out(it: Fields) -> bool:
     return bool(it.get("retired")) and (it.get("movement") or {}).get("type") == "handed_out"
 
 
+# --- holds (FR-HLD) ------------------------------------------------------------------------------
+
+
+def is_live(hold: Fields, today_iso: str) -> bool:
+    """Whether a hold still sets goods aside: not ended, and its day has not passed (FR-HLD-11).
+    Mirrors isLive in holds.ts."""
+    return hold.get("state", "live") == "live" and str(hold.get("expires_on") or "") >= today_iso
+
+
+def holds(state: State) -> list[Fields]:
+    """Every hold, soonest to run out first."""
+    return sorted(table(state, "hold"), key=lambda h: (str(h.get("expires_on") or ""), h["id"]))
+
+
+def live_holds(state: State, today_iso: str, item_id: str | None = None) -> list[Fields]:
+    """Holds in force, on one item or on all. A hold on a merged duplicate belongs to its survivor."""
+    found = [h for h in holds(state) if is_live(h, today_iso)]
+    if item_id is None:
+        return found
+    return [h for h in found if resolve_item(state, str(h.get("item_id"))) == item_id]
+
+
+def held(state: State, it: Fields, today_iso: str) -> int:
+    """How many of an item are set aside (FR-HLD-08): a count of a pool, or one for a single item.
+    Mirrors held in holds.ts."""
+    mine = live_holds(state, today_iso, it["id"])
+    if is_pool(it):
+        return sum(h.get("count") or 0 for h in mine)
+    return 1 if mine else 0
+
+
+def available(state: State, it: Fields, today_iso: str) -> int:
+    """What can be held or handed out to someone new: what is in, less what is held (FR-HLD-08)."""
+    if is_pool(it):
+        return max(0, pool_counts(it)["in"] - held(state, it, today_iso))
+    in_stock = it.get("status") == "in" and not it.get("retired") and not it.get("generic")
+    return 1 if in_stock and not held(state, it, today_iso) else 0
+
+
 def pool_counts(it: Fields) -> Fields:
     """Owned, in, missing, given, and out by holder (FR-INV-36). Mirrors poolCounts in inventory.ts. Holders at
     zero are absent. Owned is in, out and missing together; what was given away is no longer owned (FR-DST-01)."""

@@ -19,6 +19,7 @@ import { Conflicts } from "./ui/Conflicts";
 import { Desk } from "./ui/Desk";
 import { Found } from "./ui/Found";
 import { Help } from "./ui/Help";
+import { Holds } from "./ui/Holds";
 import { Home } from "./ui/Home";
 import { InstallPrompt } from "./ui/InstallPrompt";
 import { Inventory } from "./ui/Inventory";
@@ -304,6 +305,8 @@ function Screen({
       return <Conflicts store={store} />;
     case "stock-check":
       return <StockCheck store={store} />;
+    case "holds":
+      return <Holds store={store} />;
     case "repairs":
       return second ? <RepairPage store={store} id={second} /> : <Repairs store={store} />;
     case "events":

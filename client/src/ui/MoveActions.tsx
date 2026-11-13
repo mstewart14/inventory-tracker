@@ -11,12 +11,14 @@ import {
   transfer,
   type TransferOptions,
 } from "../lib/movement";
+import { held, today } from "../lib/holds";
 import { openRepairs, raiseTicket } from "../lib/repairs";
 import { type Session, sessionEvent } from "../lib/session";
 import type { Store } from "../lib/store";
 import { useUnsaved } from "../lib/unsaved";
 import { keepLabel, weighing } from "../lib/weighing";
 import { CleanerField } from "./CleanerField";
+import { ItemHolds } from "./Holds";
 import { TransferPicker } from "./TransferPicker";
 import { WeighEntry, weighHint } from "./Weighing";
 
@@ -28,6 +30,7 @@ export const MOVED_MS = 4000;
 
 export type MoveKind =
   | "Handed out"
+  | "Held"
   | "Back in stock"
   | "Checked out"
   | "Returned"
@@ -199,6 +202,8 @@ export function MoveActions({
   const handOutMove: Pending = { kind: "Handed out", act: () => handOut(store, it.id) };
   const backInStock: Pending = { kind: "Back in stock", act: () => unretireItem(store, it.id) };
   const given = wasHandedOut(it);
+  // Goods on hold are for someone: the hold hands them out, not the plain button (FR-HLD-08).
+  const onHold = held(store.state, it, today(store)) > 0;
   const returnMove: Pending = { kind: "Returned", act: (o) => checkIn(store, it.id, o) };
   const w = weighing(store.state, it);
   useEffect(() => {
@@ -305,7 +310,10 @@ export function MoveActions({
         />
       ) : (
         <>
-          {canTake && (
+          {movable && !out && (
+            <ItemHolds store={store} it={it} onDone={(message) => (onSaved ? onSaved(message) : onMoved("Held"))} />
+          )}
+          {canTake && !onHold && (
             <button type="button" className="primary" disabled={holding} onClick={() => start(handOutMove, false)}>
               Hand out
             </button>

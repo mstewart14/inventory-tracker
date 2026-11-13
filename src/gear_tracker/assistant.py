@@ -71,6 +71,7 @@ from gear_tracker import (
     codes,
     derived,
     events,
+    holds,
     inventory_csv,
     labels,
     mail,
@@ -2035,11 +2036,147 @@ def hand_out(item_id: str, count: Count | None = None) -> dict[str, Any]:
             raise BadRequest(f"only {have} in; recount first if there are more")
         if not pool and it.get("retired"):
             raise Conflict("already handed out" if views.was_handed_out(it) else "retired items are not handed out")
+        # Goods on hold are for someone (FR-HLD-08); hand_out_hold gives them to that person.
+        today = views.today(now_ms())
+        if pool and count is not None and count > (free := views.available(state, it, today)):
+            raise Conflict(f"only {free} not on hold; hand out a hold with hand_out_hold")
+        if not pool and views.held(state, it, today):
+            raise Conflict("this is on hold; hand it out with hand_out_hold, or put the hold back")
         _push(conn, who, [_draft("item", it["id"], "handed_out", {"count": count} if pool else {})])
         if not pool:
             return {"item_id": it["id"], "handed_out": True}
         counts = views.pool_counts(_item(_state(conn), item_id))
         return {"item_id": it["id"], "count": count, "in": counts["in"], "handed_out": counts["given"]}
+
+
+# --- holds (FR-HLD) ------------------------------------------------------------------------------
+
+
+def _hold(state: dict[str, Any], hold_id: str) -> dict[str, Any]:
+    hold = views.entity(state, "hold", hold_id)
+    if hold is None:
+        raise NotFound(f"no hold with id {hold_id}")
+    return hold
+
+
+def _live_hold(state: dict[str, Any], hold_id: str) -> dict[str, Any]:
+    hold = _hold(state, hold_id)
+    if not views.is_live(hold, views.today(now_ms())):
+        raise Conflict("this hold has ended")
+    return hold
+
+
+def _hold_brief(state: dict[str, Any], hold: dict[str, Any], handles: dict[str, str], today: str) -> dict[str, Any]:
+    live = views.is_live(hold, today)
+    state_now = "live" if live else ("expired" if hold.get("state", "live") == "live" else hold["state"])
+    out = {
+        "hold_id": hold["id"],
+        "item_id": views.resolve_item(state, str(hold.get("item_id"))),
+        "item": views.name_of(state, hold.get("item_id")),
+        "expires_on": hold.get("expires_on"),
+        "state": state_now,
+        "placed_by": views.user_name(state, hold.get("created_by")),
+    }
+    if hold.get("count"):
+        out["count"] = hold["count"]
+    if live and hold["id"] in handles:
+        out["for"] = handles[hold["id"]]
+    return out
+
+
+def list_holds(item_id: str | None = None, include_ended: StrictBool = False) -> dict[str, Any]:
+    """Goods set aside for clients, soonest to run out first (FR-HLD-01). `for` is the client's handle, and
+    is gone once a hold ends (FR-HLD-17). `item_id` narrows to one item; `include_ended` adds holds that
+    were handed out, put back, or expired."""
+    with _open() as (conn, _who):
+        state = _state(conn)
+        today = views.today(now_ms())
+        target = _item(state, item_id)["id"] if item_id is not None else None
+        found = [
+            h
+            for h in views.holds(state)
+            if (include_ended or views.is_live(h, today))
+            and (target is None or views.resolve_item(state, str(h.get("item_id"))) == target)
+        ]
+        handles = holds.handles(conn)
+        return {"holds": [_hold_brief(state, h, handles, today) for h in found], "count": len(found)}
+
+
+def place_hold(item_id: str, handle: str, expires_on: IsoDate, count: Count | None = None) -> dict[str, Any]:
+    """Set goods aside for a client until a day (FR-HLD-01). `handle` is a nickname or initials for the
+    client and nothing more: no full name, no contact details (FR-HLD-18). `expires_on` must be after
+    today (FR-HLD-03). A pool needs `count`; more than are free of other holds is refused (FR-HLD-08)."""
+    with _open() as (conn, who):
+        state = _state(conn)
+        it = _item(state, item_id)
+        today = views.today(now_ms())
+        pool = views.is_pool(it)
+        who_for = holds.tidy_handle(handle)
+        if who_for is None:
+            raise BadRequest("say who the hold is for")
+        if expires_on <= today:
+            raise BadRequest("a hold runs until a day after today (FR-HLD-03)")
+        if it.get("generic") and not pool:
+            raise BadRequest("that item is not held; one of its units is")
+        if pool and count is None:
+            raise BadRequest("a pool is held by count; say how many")
+        if not pool and count is not None:
+            raise BadRequest("count is only for a pool (FR-HLD-01)")
+        free = views.available(state, it, today)
+        if (count or 1) > free:
+            raise Conflict(f"only {free} free to hold" if pool else "this is not free to hold")
+        hold_id = new_ulid()
+        payload: dict[str, Any] = {"item_id": it["id"], "expires_on": expires_on}
+        if pool:
+            payload["count"] = count
+        _push(conn, who, [_draft("hold", hold_id, "created", payload)])
+        holds.set_handle(conn, hold_id, who_for, who.user_id, now_ms())
+        return _hold_brief(_state(conn), _hold(_state(conn), hold_id), holds.handles(conn), today)
+
+
+def extend_hold(hold_id: str, expires_on: IsoDate) -> dict[str, Any]:
+    """Move a live hold's end to a new day after today (FR-HLD-09). The people named on it are told (FR-HLD-27)."""
+    with _open() as (conn, who):
+        state = _state(conn)
+        hold = _live_hold(state, hold_id)
+        today = views.today(now_ms())
+        if expires_on <= today:
+            raise BadRequest("a hold runs until a day after today (FR-HLD-03)")
+        if expires_on != hold.get("expires_on"):
+            change = {"field": "expires_on", "value": expires_on, "old": hold.get("expires_on")}
+            _push(conn, who, [_draft("hold", hold["id"], "field_changed", change)])
+        return _hold_brief(_state(conn), _hold(_state(conn), hold_id), holds.handles(conn), today)
+
+
+def put_back_hold(hold_id: str) -> dict[str, Any]:
+    """End a live hold and return its goods to general stock (FR-HLD-10). Who it was for is forgotten (FR-HLD-17)."""
+    with _open() as (conn, who):
+        hold = _live_hold(_state(conn), hold_id)
+        _push(conn, who, [_draft("hold", hold["id"], "hold_ended", {"reason": "put_back"})])
+        return {"hold_id": hold["id"], "state": "put_back"}
+
+
+def hand_out_hold(hold_id: str) -> dict[str, Any]:
+    """Hand a live hold's goods to the client it is for (FR-HLD-16). The goods leave the inventory, the hold
+    ends, and who it was for is forgotten (FR-HLD-17)."""
+    with _open() as (conn, who):
+        state = _state(conn)
+        hold = _live_hold(state, hold_id)
+        it = _item(state, str(hold.get("item_id")))
+        given: dict[str, Any] = {"hold_id": hold["id"]}
+        if views.is_pool(it):
+            given["count"] = hold.get("count") or 1
+        elif it.get("retired"):
+            raise Conflict("the item is no longer in the inventory; put the hold back")
+        _push(
+            conn,
+            who,
+            [
+                _draft("item", it["id"], "handed_out", given),
+                _draft("hold", hold["id"], "hold_ended", {"reason": "handed_out"}),
+            ],
+        )
+        return {"hold_id": hold["id"], "state": "handed_out", "item_id": it["id"]}
 
 
 def recount(item_id: str, count: Annotated[StrictInt, Field(ge=0)], reason: str | None = None) -> dict[str, Any]:
@@ -3033,6 +3170,11 @@ TOOLS = [
     check_out,
     check_in,
     hand_out,
+    list_holds,
+    place_hold,
+    extend_hold,
+    put_back_hold,
+    hand_out_hold,
     weigh,
     refilled,
     recount,

@@ -1,0 +1,278 @@
+import { useState } from "react";
+import { DAY_MS } from "../lib/clock";
+import {
+  available,
+  extendHold,
+  handleFor,
+  handOutHold,
+  type Hold,
+  holds,
+  holdState,
+  isLive,
+  liveHolds,
+  MAX_HANDLE,
+  placeHold,
+  putBackHold,
+  today,
+} from "../lib/holds";
+import { isPool, type Item, nameOf, resolveItem } from "../lib/inventory";
+import { navigate } from "../lib/router";
+import type { Store } from "../lib/store";
+import { localDate } from "../lib/time";
+import { useStore } from "../useStore";
+import { plural, userName } from "./labels";
+import { Page } from "./Page";
+
+/** How long a hold runs when nobody picks a day: a week. Every hold still has a day (FR-HLD-03). */
+const DEFAULT_DAYS = 7;
+
+/** How long an ended hold stays on the Holds screen, so the people named on it see what became of it (FR-HLD-13). */
+const SHOWN_ENDED_MS = 14 * DAY_MS;
+
+/** "3 for JD · until 2026-11-20". A hold whose handle this device does not hold reads "for someone". */
+export function holdLabel(store: Store, h: Hold): string {
+  const who = handleFor(store, h.id) ?? "someone";
+  return `${h.count != null ? `${h.count} for` : "For"} ${who} · until ${h.expires_on}`;
+}
+
+const ENDED: Record<string, string> = { put_back: "Put back", handed_out: "Handed out", expired: "Expired" };
+
+/**
+ * The holds on one item, and the form that places one (FR-HLD-01). It sits with the buttons that
+ * move the item, on its page and on a scan card, so held goods are handed to the person they are
+ * for in one tap (FR-HLD-16).
+ */
+export function ItemHolds({ store, it, onDone }: { store: Store; it: Item; onDone: (message: string) => void }) {
+  useStore(store);
+  const day = today(store);
+  const mine = liveHolds(store.state, day, it.id);
+  const free = available(store.state, it, day);
+  const pool = isPool(it);
+  const tomorrow = localDate(store.now() + DAY_MS);
+  const [placing, setPlacing] = useState(false);
+  const [handle, setHandle] = useState("");
+  const [count, setCount] = useState("1");
+  const [until, setUntil] = useState("");
+  const [moving, setMoving] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const name = nameOf(store.state, it.id);
+
+  async function run(act: () => Promise<unknown>, message: string) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await act();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not record it");
+      setBusy(false);
+      return;
+    }
+    setBusy(false);
+    setPlacing(false);
+    setMoving(null);
+    onDone(message);
+  }
+
+  function open() {
+    setHandle("");
+    setCount("1");
+    setUntil(localDate(store.now() + DEFAULT_DAYS * DAY_MS));
+    setError(null);
+    setPlacing(true);
+  }
+
+  const n = Number(count.trim());
+  const validCount = !pool || (count.trim() !== "" && Number.isInteger(n) && n >= 1 && n <= free);
+  const canPlace = handle.trim() !== "" && until > day && validCount;
+
+  if (mine.length === 0 && (free === 0 || it.merged_into)) return null;
+
+  return (
+    <section className="holds" aria-label="Holds">
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      {mine.map((h) => (
+        <div className="hold" key={h.id}>
+          <p className="notice" role="note">
+            On hold · {holdLabel(store, h)}
+          </p>
+          {moving === h.id ? (
+            <form
+              className="row"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void run(() => extendHold(store, h.id, until), `Hold now runs until ${until} · ${name}`);
+              }}
+            >
+              <label className="tight">
+                <span>Hold until</span>
+                <input type="date" min={tomorrow} value={until} onChange={(e) => setUntil(e.target.value)} />
+              </label>
+              <button type="submit" className="primary" disabled={busy || until <= day}>
+                Save date
+              </button>
+              <button type="button" onClick={() => setMoving(null)}>
+                Cancel
+              </button>
+            </form>
+          ) : (
+            <div className="row">
+              <button
+                type="button"
+                className="primary"
+                disabled={busy}
+                onClick={() =>
+                  void run(
+                    () => handOutHold(store, h.id),
+                    `Handed out${h.count != null ? ` ${h.count}` : ""} from a hold · ${name}`,
+                  )
+                }
+              >
+                Hand out to {handleFor(store, h.id) ?? "them"}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setUntil(h.expires_on);
+                  setError(null);
+                  setMoving(h.id);
+                }}
+              >
+                Change date
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void run(() => putBackHold(store, h.id), `Hold put back · ${name}`)}
+              >
+                Put back
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+      {placing ? (
+        <form
+          className="hold-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!canPlace) return;
+            void run(
+              () => placeHold(store, { item_id: it.id, handle, expires_on: until, ...(pool ? { count: n } : {}) }),
+              `On hold${pool ? ` · ${n}` : ""} until ${until} · ${name}`,
+            );
+          }}
+        >
+          <label>
+            <span>Hold for</span>
+            <input
+              type="text"
+              autoFocus
+              maxLength={MAX_HANDLE}
+              placeholder="A nickname or initials, nothing more"
+              value={handle}
+              onChange={(e) => setHandle(e.target.value)}
+            />
+          </label>
+          {pool && (
+            <label className="tight">
+              <span>How many to hold</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={free}
+                step={1}
+                value={count}
+                onChange={(e) => setCount(e.target.value)}
+              />
+            </label>
+          )}
+          <label className="tight">
+            <span>Hold until</span>
+            <input type="date" min={tomorrow} value={until} onChange={(e) => setUntil(e.target.value)} />
+          </label>
+          {pool && <p className="muted small">{free} free to hold</p>}
+          <div className="row">
+            <button type="submit" className="primary" disabled={busy || !canPlace}>
+              Place hold
+            </button>
+            <button type="button" onClick={() => setPlacing(false)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : (
+        free > 0 &&
+        !it.merged_into && (
+          <div className="row minors">
+            <button type="button" className="minor" disabled={busy} onClick={open}>
+              Hold for someone…
+            </button>
+          </div>
+        )
+      )}
+    </section>
+  );
+}
+
+/** Every hold in force, soonest to run out first, and what became of those that ended lately (FR-HLD-13). */
+export function Holds({ store }: { store: Store }) {
+  useStore(store);
+  const day = today(store);
+  const all = holds(store.state);
+  const live = all.filter((h) => isLive(h, day));
+  const since = store.now() - SHOWN_ENDED_MS;
+  const ended = all
+    .filter((h) => !isLive(h, day) && (h.ended_at ?? Date.parse(`${h.expires_on}T23:59:59`)) >= since)
+    .reverse();
+  const open = (h: Hold) => navigate(`/items/${resolveItem(store.state, h.item_id)}`);
+  return (
+    <Page title="Holds" back="/">
+      {live.length === 0 ? (
+        <p>Nothing is on hold.</p>
+      ) : (
+        <>
+          <p className="muted small">{plural(live.length, "hold")}</p>
+          <ul className="items">
+            {live.map((h) => (
+              <li key={h.id}>
+                <button className="item" type="button" onClick={() => open(h)}>
+                  <span className="item-name">{nameOf(store.state, h.item_id)}</span>
+                  <span className="muted small">
+                    {holdLabel(store, h)} · placed by {userName(store.state, h.created_by)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {ended.length > 0 && (
+        <section aria-label="Ended lately">
+          <h2 className="section">Ended in the last two weeks</h2>
+          <ul className="items">
+            {ended.map((h) => (
+              <li key={h.id}>
+                <button className="item" type="button" onClick={() => open(h)}>
+                  <span className="item-name">{nameOf(store.state, h.item_id)}</span>
+                  <span className="muted small">
+                    {ENDED[holdState(h, day)]}
+                    {h.count != null ? ` · ${h.count}` : ""} · was until {h.expires_on} · placed by{" "}
+                    {userName(store.state, h.created_by)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </Page>
+  );
+}

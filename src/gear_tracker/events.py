@@ -34,7 +34,9 @@ from gear_tracker.errors import BadRequest
 from gear_tracker.replay import DERIVED_FIELDS
 from gear_tracker.ulid import is_ulid, new_ulid
 
-EntityType = Literal["item", "user", "location", "category", "code", "reservation", "repair", "found_report", "setting"]
+EntityType = Literal[
+    "item", "user", "location", "category", "code", "reservation", "repair", "found_report", "setting", "hold"
+]
 ENTITY_TYPES = frozenset(get_args(EntityType))
 
 REPAIR_STATES = ("open", "in_progress", "resolved", "wont_fix")
@@ -205,9 +207,11 @@ class CheckIn(Payload):
 
 
 class HandOut(Payload):
-    """Goods given away for good (FR-DST-01). `count` is set only for a pool; a single item goes whole."""
+    """Goods given away for good (FR-DST-01). `count` is set only for a pool; a single item goes whole.
+    `hold_id` names the hold they were handed out from (FR-HLD-16)."""
 
     count: Annotated[int, Field(ge=1)] | None = None
+    hold_id: Ulid | None = None
 
 
 class Recount(Payload):
@@ -344,6 +348,31 @@ class ReservationDetails(Payload):
         return self
 
 
+HOLD_ENDINGS = ("put_back", "handed_out", "expired")
+"""How a hold ends (FR-HLD-10, FR-HLD-16, FR-HLD-11)."""
+
+HoldEnding = Literal["put_back", "handed_out", "expired"]
+
+
+class HoldDetails(Payload):
+    """Goods set aside until a day (FR-HLD-01, FR-HLD-03). `count` is set only for a pool. Who the hold is
+    for is not here and must never be: the log cannot forget it (FR-HLD-17)."""
+
+    item_id: NonEmpty
+    count: Annotated[int, Field(ge=1)] | None = None
+    expires_on: IsoDate
+
+    @model_validator(mode="after")
+    def _no_client(self):
+        if "handle" in (self.model_extra or {}):
+            raise ValueError("who a hold is for is not recorded on the log (FR-HLD-17)")
+        return self
+
+
+class HoldEnd(Payload):
+    reason: HoldEnding
+
+
 class FoundReport(Payload):
     """A stranger's note, recorded by the server (FR-PUB-02). `item_id` is null for a code not yet on anything."""
 
@@ -382,6 +411,7 @@ CREATED_PAYLOADS: dict[str, type[Payload]] = {
     "reservation": ReservationDetails,
     "found_report": FoundReport,
     "setting": GroupSetting,
+    "hold": HoldDetails,
 }
 """Entities whose `created` has a shape. The rest take any fields."""
 
@@ -435,8 +465,9 @@ class Created(_Incoming):
     def _shaped(self):
         model = CREATED_PAYLOADS.get(self.entity_type)
         for key in self.payload:
-            # item_id is derived on a code, and plain data on a ticket or a found report.
-            if key in DERIVED_FIELDS and not (key == "item_id" and self.entity_type in ("repair", "found_report")):
+            # item_id is derived on a code, and plain data on a ticket, a found report or a hold.
+            plain = key == "item_id" and self.entity_type in ("repair", "found_report", "hold")
+            if key in DERIVED_FIELDS and not plain:
                 raise ValueError(f"payload: {key} is set by the system, not by created")
         if model is not None:
             try:
@@ -466,6 +497,14 @@ class FieldChanged(_Incoming):
         if self.entity_type == "reservation" and field in ("items", "generics"):
             # A whole-list write drops the extra the other device added (FR-RES-07).
             raise ValueError("the gear list is edited one line at a time")
+        if self.entity_type == "hold":
+            # A hold changes in one way: its day moves (FR-HLD-09). It ends by hold_ended.
+            if field != "expires_on":
+                raise ValueError("only a hold's expiry can be changed (FR-HLD-09)")
+            try:
+                TypeAdapter(IsoDate).validate_python(value)
+            except ValidationError:
+                raise ValueError("expires_on must be a date, YYYY-MM-DD") from None
         if self.entity_type == "found_report" and (field != "resolved" or not isinstance(value, bool)):
             # The report is the finder's words. A member marks it dealt with, and changes nothing else.
             raise ValueError("a found report can only be resolved")
@@ -536,6 +575,17 @@ class CheckedOut(_ItemOnly):
 class CheckedIn(_ItemOnly):
     type: Literal["checked_in"]
     payload: CheckIn
+
+
+class HoldEnded(_Incoming):
+    type: Literal["hold_ended"]
+    payload: HoldEnd
+
+    @model_validator(mode="after")
+    def _holds_only(self):
+        if self.entity_type != "hold":
+            raise ValueError("hold_ended applies only to holds")
+        return self
 
 
 class HandedOut(_ItemOnly):
@@ -646,6 +696,7 @@ IncomingEvent = Annotated[
     | CheckedOut
     | CheckedIn
     | HandedOut
+    | HoldEnded
     | Recounted
     | PoolMissingEvent
     | PoolFoundEvent
@@ -678,6 +729,7 @@ EVENT_TYPES = frozenset(
         "checked_out",
         "checked_in",
         "handed_out",
+        "hold_ended",
         "recounted",
         "pool_missing",
         "pool_found",

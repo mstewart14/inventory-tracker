@@ -182,6 +182,75 @@ def user_joined(conn: sqlite3.Connection, user_id: str) -> None:
     _send(conn, "joined", f"{_label(group.get('name', ''))}: new account", "\n".join(lines) + "\n", user_id)
 
 
+# --- holds ---------------------------------------------------------------------------------
+#
+# Not a category anyone turns on: a hold's own people are told what happened to it (FR-HLD-12,
+# FR-HLD-27, FR-HLD-28). Nothing here says who the hold is for. A message leaves the system
+# and cannot be taken back, and the handle must be (FR-HLD-17, FR-HLD-19).
+
+
+def named_on(hold: dict[str, Any]) -> list[str]:
+    """The people named on a hold (FR-HLD-26), as user ids: whoever placed or requested it, whoever
+    approved it, and whoever is delivering it."""
+    ids = [hold.get("created_by"), hold.get("approved_by"), hold.get("delivery_by")]
+    return list(dict.fromkeys(str(i) for i in ids if i))
+
+
+def _addresses(conn: sqlite3.Connection, user_ids: list[str]) -> list[str]:
+    """Email addresses of those users who are still active."""
+    out = []
+    for user_id in user_ids:
+        user = derived.get_entity(conn, "user", user_id) or {}
+        row = conn.execute("SELECT email FROM accounts WHERE user_id = ?", (user_id,)).fetchone()
+        if row is not None and user.get("active", True):
+            out.append(row["email"])
+    return out
+
+
+def _hold_lines(state: dict[str, Any], hold: dict[str, Any]) -> list[str]:
+    count = f"{hold['count']} x " if hold.get("count") else ""
+    return [
+        f"Goods: {count}{views.name_of(state, hold.get('item_id'))}",
+        f"Placed by: {views.user_name(state, hold.get('created_by')) or 'someone'}",
+    ]
+
+
+def _tell_hold(conn: sqlite3.Connection, hold_id: str, actor_id: str | None, subject: str, first: str) -> None:
+    settings = mail.get(conn)
+    hold = derived.get_entity(conn, "hold", hold_id)
+    if settings is None or hold is None:
+        return
+    to = _addresses(conn, [u for u in named_on(hold) if u != actor_id])
+    if not to:
+        return
+    state = derived.snapshot(conn)
+    group = _group(conn)
+    lines = [first, "", *_hold_lines(state, hold)]
+    link = _link(group, f"/holds/{hold_id}")
+    if link:
+        lines += ["", link]
+    _send_to(settings, to, "a hold", f"{_label(group.get('name', ''))}: {subject}", "\n".join(lines) + "\n")
+
+
+HOLD_ENDINGS = {
+    "expired": ("hold expired", "A hold ran out. The goods are back in general stock."),
+    "put_back": ("hold put back", "A hold was put back. The goods are back in general stock."),
+}
+
+
+def hold_ended(conn: sqlite3.Connection, hold_id: str, reason: str, actor_id: str | None) -> None:
+    """A hold expired or was put back (FR-HLD-12, FR-HLD-28). Handing the goods out is what a hold is for,
+    and is not news."""
+    if reason in HOLD_ENDINGS:
+        subject, first = HOLD_ENDINGS[reason]
+        _tell_hold(conn, hold_id, actor_id, subject, first)
+
+
+def hold_moved(conn: sqlite3.Connection, hold_id: str, old: Any, new: Any, actor_id: str) -> None:
+    """A hold's end date moved (FR-HLD-27)."""
+    _tell_hold(conn, hold_id, actor_id, "hold date moved", f"A hold now runs until {new}. It was {old}.")
+
+
 LOCK_MAIL_EVERY_MS = 3_600_000
 """At most one lock mail an hour (FR-USR-30). Every Admin gets the same one, so this caps each Admin's
 mail too. Otherwise anyone who can reach sign-in can fill the Admins' inboxes."""

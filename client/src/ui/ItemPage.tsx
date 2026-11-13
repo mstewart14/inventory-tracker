@@ -47,6 +47,7 @@ import {
   wasHandedOut,
 } from "../lib/inventory";
 import { itemReservations } from "../lib/itemReservations";
+import { ItemHolds } from "./Holds";
 import {
   backFromCleaning,
   sendHomeFromPool,
@@ -1847,184 +1848,192 @@ export function PoolActions({
   }
 
   return (
-    <PoolForm className="move-actions" onSubmit={() => void submit(n)}>
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-      {overSend && (
-        <p className="error" role="alert">
-          Only {sendable} out that could go home.
-        </p>
-      )}
-      {overdraw && (
-        <div className="row">
-          <p className="notice" role="note">
-            Only {counts.in} in. Are there more here?
+    <>
+      {/* Its own forms, so it sits beside the count form, not inside it. */}
+      {!mode && <ItemHolds store={store} it={it} onDone={(message) => onMoved(message, "recount")} />}
+      <PoolForm className="move-actions" onSubmit={() => void submit(n)}>
+        {error && (
+          <p className="error" role="alert">
+            {error}
           </p>
-          <button type="button" disabled={busy} onClick={recountFirst}>
-            Recount
-          </button>
-        </div>
-      )}
-      {(mode === "in" || mode === "missing") && needsHolderPick && (
-        <label className="tight">
-          <span>Who</span>
-          <select value={holder ?? ""} onChange={(e) => pickHolder(e.target.value)}>
-            {counts.out.map((o) => (
-              <option key={o.holder_id} value={o.holder_id}>
-                {userName(state, o.holder_id)} · {o.count}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      {(mode === "in" || mode === "missing") && shareList.length > 1 && (
-        <label className="tight">
-          <span>{mode === "missing" ? "Missing from" : "Returned from"}</span>
-          <select value={share?.key ?? ""} onChange={(e) => pickShare(e.target.value)}>
-            {shareList.map((x) => (
-              <option key={x.key} value={x.key}>
-                {x.cleaner ?? "Not sent home"} · {x.count}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      {mode === "back" && (
-        <label className="tight">
-          <span>Back from</span>
-          <select value={`${holder}\0${from}`} onChange={(e) => pickAtHome(e.target.value)}>
-            {atHome.map((x) => (
-              <option key={`${x.holder_id}\0${x.key}`} value={`${x.holder_id}\0${x.key}`}>
-                {x.cleaner} · {x.count}
-                {x.holder_id !== me ? ` (${userName(state, x.holder_id)})` : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      {mode === "home" && <CleanerField store={store} value={cleaner} onChange={setCleaner} disabled={busy} />}
-      {mode && (
-        <label className="tight">
-          <span>How many</span>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={mode === "recount" ? 0 : 1}
-            max={
-              mode === "in" || mode === "missing"
-                ? share?.count ?? holderCount(holder)
-                : mode === "back"
-                  ? homeShare?.count
-                  : mode === "found" || mode === "writeoff"
-                    ? counts.missing
-                    : undefined
-            }
-            step={1}
-            autoFocus
-            value={count}
-            onChange={(e) => setCount(e.target.value)}
-          />
-        </label>
-      )}
-      {(mode === "recount" || mode === "writeoff") && (
-        <label>
-          <span>Why (optional)</span>
-          <textarea
-            aria-label="Why (optional)"
-            rows={2}
-            placeholder={mode === "writeoff" ? "e.g. left at camp" : "e.g. counted on the shelf"}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-          />
-        </label>
-      )}
-      {mode === "out" && !waits && <p className="muted small event-hint">{event ? `Event: ${event}` : "No event"}</p>}
-      {(takes ? counts.in : mode === "home" ? sendable : 0) > 1 && (
-        <div className="row">
-          <button type="button" disabled={busy} onClick={() => void submit(mode === "home" ? sendable : counts.in)}>
-            All {mode === "home" ? sendable : counts.in}
-          </button>
-        </div>
-      )}
-      {mode ? (
-        <div className="row" key="go">
-          <button type="submit" className="primary" disabled={busy || !validCount || needsName || overSend || overdraw}>
-            {mode === "give"
-              ? "Hand out"
-              : mode === "out"
-                ? "Check out"
-                : mode === "home"
-                  ? "Send home"
+        )}
+        {overSend && (
+          <p className="error" role="alert">
+            Only {sendable} out that could go home.
+          </p>
+        )}
+        {overdraw && (
+          <div className="row">
+            <p className="notice" role="note">
+              Only {counts.in} in. Are there more here?
+            </p>
+            <button type="button" disabled={busy} onClick={recountFirst}>
+              Recount
+            </button>
+          </div>
+        )}
+        {(mode === "in" || mode === "missing") && needsHolderPick && (
+          <label className="tight">
+            <span>Who</span>
+            <select value={holder ?? ""} onChange={(e) => pickHolder(e.target.value)}>
+              {counts.out.map((o) => (
+                <option key={o.holder_id} value={o.holder_id}>
+                  {userName(state, o.holder_id)} · {o.count}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {(mode === "in" || mode === "missing") && shareList.length > 1 && (
+          <label className="tight">
+            <span>{mode === "missing" ? "Missing from" : "Returned from"}</span>
+            <select value={share?.key ?? ""} onChange={(e) => pickShare(e.target.value)}>
+              {shareList.map((x) => (
+                <option key={x.key} value={x.key}>
+                  {x.cleaner ?? "Not sent home"} · {x.count}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {mode === "back" && (
+          <label className="tight">
+            <span>Back from</span>
+            <select value={`${holder}\0${from}`} onChange={(e) => pickAtHome(e.target.value)}>
+              {atHome.map((x) => (
+                <option key={`${x.holder_id}\0${x.key}`} value={`${x.holder_id}\0${x.key}`}>
+                  {x.cleaner} · {x.count}
+                  {x.holder_id !== me ? ` (${userName(state, x.holder_id)})` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {mode === "home" && <CleanerField store={store} value={cleaner} onChange={setCleaner} disabled={busy} />}
+        {mode && (
+          <label className="tight">
+            <span>How many</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={mode === "recount" ? 0 : 1}
+              max={
+                mode === "in" || mode === "missing"
+                  ? share?.count ?? holderCount(holder)
                   : mode === "back"
-                    ? "Back from home"
-                    : mode === "in"
-                      ? "Return"
-                      : mode === "missing"
-                        ? "Mark missing"
-                        : mode === "found"
-                          ? "Found"
-                          : mode === "writeoff"
-                            ? "Write off"
-                            : "Recount"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setMode(null);
-              setResume(null);
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      ) : (
-        <div className="row" key="pick">
-          <button type="button" className="primary" onClick={() => open("give")}>
-            Hand out
-          </button>
-          <button type="button" onClick={() => open("out")}>
-            Check out
-          </button>
-          {counts.out.length > 0 && (
-            <button type="button" onClick={() => open("in")}>
-              Return
+                    ? homeShare?.count
+                    : mode === "found" || mode === "writeoff"
+                      ? counts.missing
+                      : undefined
+              }
+              step={1}
+              autoFocus
+              value={count}
+              onChange={(e) => setCount(e.target.value)}
+            />
+          </label>
+        )}
+        {(mode === "recount" || mode === "writeoff") && (
+          <label>
+            <span>Why (optional)</span>
+            <textarea
+              aria-label="Why (optional)"
+              rows={2}
+              placeholder={mode === "writeoff" ? "e.g. left at camp" : "e.g. counted on the shelf"}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </label>
+        )}
+        {mode === "out" && !waits && <p className="muted small event-hint">{event ? `Event: ${event}` : "No event"}</p>}
+        {(takes ? counts.in : mode === "home" ? sendable : 0) > 1 && (
+          <div className="row">
+            <button type="button" disabled={busy} onClick={() => void submit(mode === "home" ? sendable : counts.in)}>
+              All {mode === "home" ? sendable : counts.in}
             </button>
-          )}
-          <button type="button" onClick={() => open("recount")}>
-            Recount
-          </button>
-          {counts.out.length > 0 && (
-            <button type="button" onClick={() => open("missing")}>
-              Mark missing
+          </div>
+        )}
+        {mode ? (
+          <div className="row" key="go">
+            <button
+              type="submit"
+              className="primary"
+              disabled={busy || !validCount || needsName || overSend || overdraw}
+            >
+              {mode === "give"
+                ? "Hand out"
+                : mode === "out"
+                  ? "Check out"
+                  : mode === "home"
+                    ? "Send home"
+                    : mode === "back"
+                      ? "Back from home"
+                      : mode === "in"
+                        ? "Return"
+                        : mode === "missing"
+                          ? "Mark missing"
+                          : mode === "found"
+                            ? "Found"
+                            : mode === "writeoff"
+                              ? "Write off"
+                              : "Recount"}
             </button>
-          )}
-          {counts.missing > 0 && (
-            <button type="button" onClick={() => open("found")}>
-              Found
+            <button
+              type="button"
+              onClick={() => {
+                setMode(null);
+                setResume(null);
+              }}
+            >
+              Cancel
             </button>
-          )}
-          {counts.missing > 0 && (
-            <button type="button" onClick={() => open("writeoff")}>
-              Write off
+          </div>
+        ) : (
+          <div className="row" key="pick">
+            <button type="button" className="primary" onClick={() => open("give")}>
+              Hand out
             </button>
-          )}
-          {atHome.length > 0 && (
-            <button type="button" onClick={() => open("back")}>
-              Back from home
+            <button type="button" onClick={() => open("out")}>
+              Check out
             </button>
-          )}
-          {session === undefined && sendable > 0 && (
-            <button type="button" className="minor" onClick={() => open("home")}>
-              Send home with…
+            {counts.out.length > 0 && (
+              <button type="button" onClick={() => open("in")}>
+                Return
+              </button>
+            )}
+            <button type="button" onClick={() => open("recount")}>
+              Recount
             </button>
-          )}
-        </div>
-      )}
-      {children}
-    </PoolForm>
+            {counts.out.length > 0 && (
+              <button type="button" onClick={() => open("missing")}>
+                Mark missing
+              </button>
+            )}
+            {counts.missing > 0 && (
+              <button type="button" onClick={() => open("found")}>
+                Found
+              </button>
+            )}
+            {counts.missing > 0 && (
+              <button type="button" onClick={() => open("writeoff")}>
+                Write off
+              </button>
+            )}
+            {atHome.length > 0 && (
+              <button type="button" onClick={() => open("back")}>
+                Back from home
+              </button>
+            )}
+            {session === undefined && sendable > 0 && (
+              <button type="button" className="minor" onClick={() => open("home")}>
+                Send home with…
+              </button>
+            )}
+          </div>
+        )}
+        {children}
+      </PoolForm>
+    </>
   );
 }
 

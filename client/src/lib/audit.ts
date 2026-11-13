@@ -155,6 +155,7 @@ const HAPPENED: Record<string, string> = {
   checked_out: "Checked out",
   checked_in: "Checked in",
   handed_out: "Handed out",
+  hold_ended: "Hold ended",
   cleaning_started: "Sent home to clean",
   cleaning_ended: "Back from cleaning",
   cleaner_corrected: "Cleaner corrected",

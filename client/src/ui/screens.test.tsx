@@ -685,6 +685,7 @@ test("the menu reaches every section, users included", async () => {
   const sections = within(screen.getByRole("navigation", { name: "Menu" })).getAllByRole("button");
   expect(sections.map((b) => b.textContent)).toEqual([
     "All items",
+    "Holds",
     "Events",
     "Reports",
     "Stock check",

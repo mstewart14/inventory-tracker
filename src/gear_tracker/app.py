@@ -37,6 +37,7 @@ from gear_tracker import (
     codes,
     derived,
     events,
+    holds,
     inventory_csv,
     labels,
     mail,
@@ -332,10 +333,14 @@ def create_app(
         # tests: a fresh database has no feeds, so each tick finds nothing to fetch, and the
         # thread stops the moment this context manager exits.
         stop_calendar_refresh = calendars.start_background_refresh(db_path)
+        # Ends holds whose day has passed, tells the people named on them, and forgets who they
+        # were for (FR-HLD-11, FR-HLD-12, FR-HLD-17).
+        stop_hold_sweep = holds.start_background_sweep(db_path)
         try:
             async with mcp.session_manager.run():
                 yield
         finally:
+            stop_hold_sweep()
             stop_calendar_refresh()
 
     app = GearApp(title="Gear Tracker", lifespan=lifespan)

@@ -13,7 +13,7 @@ from typing import Annotated, Any
 
 from pydantic import Field, ValidationError
 
-from gear_tracker import calendars, derived, events, notify, views
+from gear_tracker import calendars, derived, events, holds, notify, views
 from gear_tracker.errors import ApiError, BadRequest, Deactivated, Forbidden, Rebootstrap
 from gear_tracker.events import NonEmpty, Rejected, Strict, now_ms
 from gear_tracker.flags import add_flag
@@ -46,6 +46,9 @@ class PushBody(Strict):
     client_time: int
     events: list[Any]
     """Each event is judged on its own, so a bad one is a rejection, not a 400."""
+    hold_handles: list[Any] = []
+    """Who each new hold is for, `{hold_id, handle}` (FR-HLD-02). Beside the events, never in them: the
+    log cannot forget a handle, and this must be forgotten when the hold ends (FR-HLD-17)."""
     round_trip_ms: Annotated[int, Field(ge=0)] | None = None
     """The device's last measured round trip (client/src/lib/clock.ts measureOffset halves this to
     get its own offset). Omitted by an older client, or before the device has ever synced."""
@@ -83,6 +86,8 @@ def bootstrap(conn: sqlite3.Connection, principal: Principal, now: int | None = 
         # Reference data the server owns, not part of the log (FR-RES-20). Every device gets the
         # current list, so the reservation form and a scanning session can suggest it offline.
         "calendar_events": calendars.upcoming_events(conn),
+        # Who each live hold is for. Not on the log, so it comes beside it (FR-HLD-17).
+        "hold_handles": holds.handles(conn),
     }
 
 
@@ -127,6 +132,7 @@ def push(conn: sqlite3.Connection, principal: Principal, body: Any, now: int | N
                 _check_drift(conn, stored, measured_offset, now)
                 _notify_of(conn, stored)
                 _close_deleted_ticket(conn, stored)
+                holds.after(conn, stored)
             accepted.append(stored.id)
         except Rejected as exc:
             rejected.append({"id": incoming.get("id"), "reason": exc.reason})
@@ -151,7 +157,21 @@ def push(conn: sqlite3.Connection, principal: Principal, body: Any, now: int | N
                 incoming.get("entity_id"),
                 principal.device_id,
             )
-    return {"accepted": accepted, "rejected": rejected, "log_id": log_id(conn), "server_time": now}
+    # After the events, so a hold made in this batch is here to take its handle. Every one is
+    # answered, kept or not, so the device stops sending it.
+    taken: list[str] = []
+    for entry in batch.hold_handles:
+        if isinstance(entry, dict) and isinstance(entry.get("hold_id"), str):
+            if principal.active:
+                holds.set_handle(conn, entry["hold_id"], entry.get("handle"), principal.user_id, now)
+            taken.append(entry["hold_id"])
+    return {
+        "accepted": accepted,
+        "rejected": rejected,
+        "hold_handles_taken": taken,
+        "log_id": log_id(conn),
+        "server_time": now,
+    }
 
 
 def _is_pool(conn: sqlite3.Connection, item_id: Any) -> bool:
@@ -261,6 +281,36 @@ def _check_entity_rules(conn: sqlite3.Connection, principal: Principal, incoming
             raise Rejected("a pool is handed out by count (FR-DST-02)")
         if not is_pool and has_count:
             raise Rejected("count is only for a pool (FR-DST-02)")
+    if entity_type == "item" and kind == "handed_out" and isinstance(incoming.get("payload"), dict):
+        hold_id = incoming["payload"].get("hold_id")
+        if hold_id is not None:
+            hold = derived.get_entity(conn, "hold", str(hold_id))
+            if hold is None:
+                raise Rejected("no such hold")
+            state = derived.snapshot(conn)
+            if views.resolve_item(state, str(hold.get("item_id"))) != views.resolve_item(
+                state, str(incoming.get("entity_id"))
+            ):
+                raise Rejected("that hold is on a different item (FR-HLD-16)")
+    if entity_type == "hold":
+        payload = incoming.get("payload")
+        payload = payload if isinstance(payload, dict) else {}
+        if kind == "created":
+            item = derived.get_entity(conn, "item", str(payload.get("item_id")))
+            if item is None or item.get("deleted"):
+                raise Rejected("no such item to hold")
+            is_pool = bool(item.get("pool"))
+            if item.get("generic") and not is_pool:
+                raise Rejected("a generic item is not held; one of its units is (FR-HLD-01)")
+            if is_pool and payload.get("count") is None:
+                raise Rejected("a pool is held by count (FR-HLD-01)")
+            if not is_pool and payload.get("count") is not None:
+                raise Rejected("count is only for a pool (FR-HLD-01)")
+        else:
+            if derived.get_entity(conn, "hold", str(incoming.get("entity_id"))) is None:
+                raise Rejected("no such hold")
+            if kind == "hold_ended" and payload.get("reason") == "expired":
+                raise Rejected("a hold expires by its date, not by a device (FR-HLD-11)")
     if entity_type == "item" and kind == "cleaning_ended":
         item = derived.get_entity(conn, "item", str(incoming.get("entity_id"))) or {}
         payload = incoming.get("payload")
@@ -427,4 +477,6 @@ def pull(
         "server_time": now,
         # Refreshed hourly on the server; a pull every 30 s keeps a device's copy close to that (FR-RES-20).
         "calendar_events": calendars.upcoming_events(conn),
+        # Whole, every time: a handle that is gone from here is deleted on the device (FR-HLD-17).
+        "hold_handles": holds.handles(conn),
     }

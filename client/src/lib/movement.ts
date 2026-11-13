@@ -5,6 +5,7 @@
  */
 import { seen } from "./actions";
 import { aliases, isPool, item, type Item, poolCounts, poolLots, wasHandedOut } from "./inventory";
+import { available, held, today as holdDay } from "./holds";
 import * as notes from "./notes";
 import type { Log } from "./record";
 import { eventNameKey, tidyName } from "./calendar";
@@ -395,6 +396,8 @@ export async function handOut(store: Store, itemId: string) {
   const it = current(store, itemId);
   if (it.retired) throw new Error(wasHandedOut(it) ? "already handed out" : "retired items are not handed out");
   if (it.merged_into) throw new Error("merged into another item");
+  // Goods on hold are for someone (FR-HLD-08); the hold hands them out.
+  if (held(store.state, it, holdDay(store)) > 0) throw new Error("on hold; hand it out from the hold");
   return move(store, itemId, "handed_out", {});
 }
 
@@ -403,6 +406,8 @@ export async function handOutPool(store: Store, itemId: string, count: number) {
   const it = poolItem(store, itemId);
   if (!Number.isInteger(count) || count < 1) throw new Error("pick a count of at least 1");
   refuseOverdraw(it, count);
+  const free = available(store.state, it, holdDay(store));
+  if (count > free) throw new Error(`only ${free} not on hold`);
   return move(store, itemId, "handed_out", { count });
 }
 

@@ -135,12 +135,21 @@ export interface Bootstrap {
   cursor: number;
   log_id: string;
   calendar_events: CalendarEvent[];
+  /** Who each live hold is for, whole (FR-HLD-17). Absent from a server that predates holds. */
+  hold_handles?: Record<string, string>;
 }
 export interface Pull {
   events: ServerEvent[];
   cursor: number;
   log_id: string;
   calendar_events: CalendarEvent[];
+  hold_handles?: Record<string, string>;
+}
+
+/** Who a hold is for, sent beside the events and never in them (FR-HLD-17). */
+export interface HoldHandle {
+  hold_id: string;
+  handle: string;
 }
 
 /** A calendar feed an Admin added (FR-RES-20). `url_redacted` is host and path; the query
@@ -175,6 +184,8 @@ export interface AuditPage {
 export interface PushResult {
   accepted: string[];
   rejected: { id: string | null; reason: string }[];
+  /** The holds whose handles the server has answered for, kept or not. */
+  hold_handles_taken?: string[];
   log_id: string;
 }
 export interface Session {
@@ -252,7 +263,10 @@ export function createApi(options: ApiOptions = {}) {
   const fetchFn = options.fetch ?? ((...args) => fetch(...args));
 
   async function request<T>(method: string, path: string, body?: unknown): Promise<Timed<T>> {
-    const headers: Record<string, string> = { Accept: "application/json", [CLIENT_HEADER]: clientVersion() };
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      [CLIENT_HEADER]: clientVersion(),
+    };
     const bearer = token();
     if (bearer) headers.Authorization = `Bearer ${bearer}`;
     if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -292,7 +306,9 @@ export function createApi(options: ApiOptions = {}) {
 
   /** Bytes, not JSON: photos go up and come down whole. */
   async function raw(method: string, path: string, body?: BodyInit, contentType?: string): Promise<Response> {
-    const headers: Record<string, string> = { [CLIENT_HEADER]: clientVersion() };
+    const headers: Record<string, string> = {
+      [CLIENT_HEADER]: clientVersion(),
+    };
     const bearer = token();
     if (bearer) headers.Authorization = `Bearer ${bearer}`;
     if (contentType) headers["Content-Type"] = contentType;
@@ -303,7 +319,10 @@ export function createApi(options: ApiOptions = {}) {
       throw new Offline(String(error));
     }
     if (!response.ok) {
-      const data = (await response.json().catch(() => ({}))) as { error?: string; message?: string };
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+      };
       throw new ApiError(response.status, data.error ?? "error", data.message ?? response.statusText);
     }
     return response;
@@ -335,14 +354,20 @@ export function createApi(options: ApiOptions = {}) {
       const asked = String(query);
       return request<AuditPage>("GET", `/audit${asked ? `?${asked}` : ""}`);
     },
-    push: (device_id: string, client_time: number, events: OutgoingEvent[], round_trip_ms?: number) =>
-      request<PushResult>(
-        "POST",
-        "/sync/push",
-        round_trip_ms === undefined
-          ? { device_id, client_time, events }
-          : { device_id, client_time, events, round_trip_ms },
-      ),
+    push: (
+      device_id: string,
+      client_time: number,
+      events: OutgoingEvent[],
+      round_trip_ms?: number,
+      hold_handles: HoldHandle[] = [],
+    ) =>
+      request<PushResult>("POST", "/sync/push", {
+        device_id,
+        client_time,
+        events,
+        ...(round_trip_ms === undefined ? {} : { round_trip_ms }),
+        ...(hold_handles.length > 0 ? { hold_handles } : {}),
+      }),
     signIn: (email: string, password: string, device_id: string) =>
       request<Session>("POST", "/auth/sign-in", { email, password, device_id }),
     signOut: () => request<Record<string, never>>("POST", "/auth/sign-out"),
@@ -355,12 +380,23 @@ export function createApi(options: ApiOptions = {}) {
       request<Session>("POST", "/auth/redeem", { token, password, device_id }),
     /** Whoever opens a standing join link makes their own account (FR-USR-19), and this device signs in. */
     join: (link: string, name: string, email: string, password: string, device_id: string) =>
-      request<Session>("POST", "/join", { link, name, email, password, device_id }),
+      request<Session>("POST", "/join", {
+        link,
+        name,
+        email,
+        password,
+        device_id,
+      }),
     // Admins only. Every call needs the network; nothing here is stored on the device.
     users: () => request<{ users: AccountUser[] }>("GET", "/users"),
     /** `link` is this app's join page with TOKEN standing in for the token; the server fills it in. */
     invite: (name: string, email: string, role: string, link: string) =>
-      request<LinkResult & { user_id: string }>("POST", "/users/invite", { name, email, role, link }),
+      request<LinkResult & { user_id: string }>("POST", "/users/invite", {
+        name,
+        email,
+        role,
+        link,
+      }),
     editUser: (userId: string, fields: { name?: string; email?: string }) =>
       request<{ user: User }>("POST", `/users/${userId}/edit`, fields),
     setRole: (userId: string, role: string) => request<{ user: User }>("POST", `/users/${userId}/role`, { role }),
@@ -378,11 +414,17 @@ export function createApi(options: ApiOptions = {}) {
       request<NotificationSettings>("PUT", "/me/notifications", categories),
     /** A standing link and its QR (FR-USR-19). `link` is this app's join page with TOKEN standing in. */
     createJoinLink: (expiry_days: JoinLinkExpiry, link: string, label: string) =>
-      request<CreatedJoinLink>("POST", "/join-links", { expiry_days, link, label }),
+      request<CreatedJoinLink>("POST", "/join-links", {
+        expiry_days,
+        link,
+        label,
+      }),
     joinLinks: () => request<{ links: JoinLink[] }>("GET", "/join-links"),
     /** Label a link, or change its label (FR-USR-21). The link itself keeps working. */
     renameJoinLink: (id: string, label: string) =>
-      request<{ links: JoinLink[] }>("POST", `/join-links/${id}/label`, { label }),
+      request<{ links: JoinLink[] }>("POST", `/join-links/${id}/label`, {
+        label,
+      }),
     revokeJoinLink: (id: string) => request<{ links: JoinLink[] }>("POST", `/join-links/${id}/revoke`),
     mail: () => request<{ mail: MailSettings | null }>("GET", "/mail"),
     saveMail: (settings: Omit<MailSettings, "has_password"> & { password: string }) =>

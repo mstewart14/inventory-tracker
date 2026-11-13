@@ -97,6 +97,17 @@ export type State = Record<string, Record<string, Fields>>;
 // A pool's `movement` is kept up to date like any item's, with `count` added (see `movement`),
 // so the item's History can read "Alice checked out 10" straight off the log.
 
+// --- holds (FR-HLD-01) ---------------------------------------------------------------------
+//
+// A hold is its own entity: `created {item_id, count?, expires_on}` sets `created_by` and `state`
+// "live". Who it is for is never on the log (FR-HLD-17); see holds.ts. `field_changed` moves
+// `expires_on` (FR-HLD-09). `hold_ended {reason}` sets `state` to the reason ("put_back",
+// "handed_out" or "expired"), with `ended_at` and `ended_by`; the first ending in replay order
+// stands. A hold takes nothing off its item: what is held is worked out when it is read (held in
+// holds.ts), from the live holds whose `expires_on` has not passed, so an expired hold frees its
+// goods on a device with no signal (FR-HLD-11). Handing held goods out is a `handed_out` on the
+// item, naming the `hold_id`, beside the hold's own `hold_ended`.
+
 export interface ReplayEvent {
   id: string;
   entity_type: string;
@@ -139,6 +150,8 @@ export interface Movement {
   cleaner?: string;
   /** The cleaning_started that sent a single item home. */
   cleaning_id?: string;
+  /** The hold a hand-out came from (FR-HLD-16). */
+  hold_id?: string;
 }
 
 /** A pool's out side: how many one holder has (FR-INV-36). */
@@ -293,6 +306,7 @@ export const KNOWN_EVENT_TYPES: ReadonlySet<string> = new Set([
   "checked_out",
   "checked_in",
   "handed_out",
+  "hold_ended",
   "recounted",
   "pool_missing",
   "pool_found",
@@ -353,6 +367,18 @@ export function apply(entity: Fields, event: ReplayEvent): void {
       }
       if (event.entity_type === "reservation") {
         entity.created_by = event.actor_id;
+      }
+      if (event.entity_type === "hold") {
+        entity.created_by = event.actor_id;
+        if (!("state" in entity)) entity.state = "live";
+      }
+      break;
+    case "hold_ended":
+      // The first ending stands (FR-HLD-10, FR-HLD-11, FR-HLD-16).
+      if ((entity.state ?? "live") === "live") {
+        entity.state = p.reason;
+        entity.ended_at = event.effective_at;
+        entity.ended_by = event.actor_id;
       }
       break;
     case "field_changed":
@@ -703,5 +729,6 @@ function movement(event: ReplayEvent): Movement {
   };
   if (event.payload.count != null) m.count = event.payload.count as number;
   if (event.payload.cleaner) m.cleaner = event.payload.cleaner as string;
+  if (event.payload.hold_id) m.hold_id = event.payload.hold_id as string;
   return m;
 }

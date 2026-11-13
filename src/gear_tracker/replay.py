@@ -104,6 +104,18 @@ State = dict[str, dict[str, dict[str, Any]]]
 # A pool's `movement` is kept up to date like any item's, with `count` added (see `_movement`),
 # so the item's History can read "Alice checked out 10" straight off the log.
 
+# --- holds (FR-HLD-01) -------------------------------------------------------------------------
+#
+# A hold is its own entity: `created {item_id, count?, expires_on}` sets `created_by` and `state`
+# "live". Who it is for is never on the log (FR-HLD-17); see holds.py. `field_changed` moves
+# `expires_on` (FR-HLD-09). `hold_ended {reason}` sets `state` to the reason ("put_back",
+# "handed_out" or "expired"), with `ended_at` and `ended_by`; the first ending in replay order
+# stands, so a hold put back on one phone and handed out on another has one answer everywhere.
+# A hold takes nothing off its item: what is held is worked out when it is read (views.held), from
+# the live holds whose `expires_on` has not passed, so an expired hold frees its goods on a device
+# with no signal (FR-HLD-11). Handing held goods out is a `handed_out` on the item, naming the
+# `hold_id`, beside the hold's own `hold_ended`.
+
 # Set by replay, never by a device. A created or field_changed that names one is rejected.
 DERIVED_FIELDS = frozenset(
     {
@@ -126,6 +138,8 @@ DERIVED_FIELDS = frozenset(
         "pool_lots",
         "pool_missing",
         "pool_given",
+        "ended_at",
+        "ended_by",
         "reading",
         "deactivated_at",
     }
@@ -300,6 +314,15 @@ def apply(entity: dict[str, Any], event: Event) -> None:
                 entity.setdefault("state", "open")
             if event.entity_type == "reservation":
                 entity["created_by"] = event.actor_id
+            if event.entity_type == "hold":
+                entity["created_by"] = event.actor_id
+                entity.setdefault("state", "live")
+        case "hold_ended":
+            # The first ending stands (FR-HLD-10, FR-HLD-11, FR-HLD-16).
+            if entity.get("state", "live") == "live":
+                entity["state"] = p["reason"]
+                entity["ended_at"] = event.effective_at
+                entity["ended_by"] = event.actor_id
         case "field_changed":
             # Modified means the entity's own fields (FR-INV-03). Movements and notes do not count.
             entity[p["field"]] = p["value"]
@@ -565,4 +588,6 @@ def _movement(event: Event) -> dict[str, Any]:
         m["count"] = event.payload["count"]
     if event.payload.get("cleaner"):
         m["cleaner"] = event.payload["cleaner"]
+    if event.payload.get("hold_id"):
+        m["hold_id"] = event.payload["hold_id"]
     return m

@@ -607,6 +607,35 @@ The access history on an item page (FR-INV-09) is read from a log: the server's,
 90 days of events the device holds (NFR-DATA-03). One render path draws either, so the rows do not change shape when the
 signal does; only the note under them does. See [History](#history).
 
+## Holds
+
+A hold sets goods aside for a client until a day (FR-HLD-01). It is an entity on the log, `hold`: `created` with the
+item, a count for a pool and `expires_on`; `field_changed` moves `expires_on` and nothing else (FR-HLD-09); `hold_ended`
+carries a reason, `put_back`, `handed_out` or `expired`. The first ending in replay order stands, so a hold put back on
+one phone and handed out on another reads the same everywhere.
+
+**Who a hold is for is not on the log.** The log is append-only, kept for good, and guarded by triggers, so anything
+written to it can never be removed, and a client's handle must be once the hold ends (FR-HLD-17). The handle is a row in
+`hold_handles`, a table beside the log. A device sends a new handle beside its events in the same push, as
+`hold_handles`, never inside one; the server refuses a `created` hold that has a `handle` key, so a mistake cannot put
+one on the log. Every bootstrap and pull returns the whole table, which is how a deletion reaches a device: a handle
+missing from the reply is dropped there. On the device both live in `meta`, `pending_handles` until the server answers
+and `hold_handles` after. The server deletes the row when the hold ends. Notifications and the assistant's replies about
+an ended hold carry no handle either (FR-HLD-29). A backup taken while a hold was live still holds its handle until that
+backup is rotated out.
+
+**A hold takes nothing off its item.** What is held is worked out when it is read (`held`, `available`, twins in
+`views.py` and `holds.ts`): the counts of the live holds on the item, where live means not ended and `expires_on` not
+yet passed. So a hold frees its goods the day after it runs out with no event at all, on a phone with no signal as much
+as on the server (FR-HLD-11, FR-HLD-30). The server then makes it a fact: a thread started with the app (`holds.py`,
+every ten minutes) appends `hold_ended` with reason `expired` as actor `system`, mails the people named on the hold and
+deletes the handle. A device may not write `expired`.
+
+Goods on hold are not handed out to anyone else (FR-HLD-08): a plain `handed_out` of more than is available is refused
+on the device and by the assistant. The server does not refuse it at push, because two phones offline can each believe
+the goods are free, and a refused hand-out would deny something that already happened. Handing a hold out is two events
+in one push: `handed_out` on the item, naming the `hold_id`, and `hold_ended` on the hold.
+
 ## Repairs
 
 A ticket is a `repair` entity: `created` with the item it is against and a description (FR-REP-01), by anyone signed in

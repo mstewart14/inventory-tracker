@@ -908,6 +908,26 @@ main:has(> .viewfinder) > .event-choice {
   grid-column: 1 / -1;
 }
 
+/* The holds on an item, and the form that places one (FR-HLD-01). */
+.holds,
+.holds .hold,
+.holds .hold-form {
+  touch-action: manipulation;
+  display: grid;
+  gap: 12px;
+}
+
+.holds .notice,
+.holds .error,
+.holds p {
+  margin: 0;
+  text-align: center;
+}
+
+.holds > .row > :only-child {
+  grid-column: 1 / -1;
+}
+
 /* The event question and the transfer list (FR-OUT-05, FR-OUT-26). */
 .event-choice,
 .transfer-picker {
@@ -1392,6 +1412,11 @@ h3.section.small {
   /* The move buttons join the page's row; notices, fields and pickers take a line. */
   .actions .move-actions {
     display: contents;
+  }
+
+  /* The holds panel takes a line of its own beside the page's buttons. */
+  .actions .holds {
+    flex-basis: 100%;
   }
 
   .actions .move-actions > .row {

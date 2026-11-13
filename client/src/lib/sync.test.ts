@@ -22,7 +22,9 @@ class FakeServer {
   pageSize = 2;
   lastSeq = new Map<string, number>();
   /** Bodies of every push this server has handled, in order (round_trip_ms among them). */
-  pushBodies: { round_trip_ms?: number }[] = [];
+  pushBodies: { round_trip_ms?: number; hold_handles?: { hold_id: string; handle: string }[] }[] = [];
+  /** Who each live hold is for, as the real server keeps it beside the log (FR-HLD-17). */
+  handles: Record<string, string> = {};
 
   handle = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     if (this.down) throw new TypeError("Failed to fetch");
@@ -35,8 +37,13 @@ class FakeServer {
       return json(401, { error: "unauthorized", message: "sign in first" });
 
     if (url.pathname === "/sync/push") {
-      const body = JSON.parse(String(init?.body)) as { events: ServerEvent[]; round_trip_ms?: number };
-      this.pushBodies.push({ round_trip_ms: body.round_trip_ms });
+      const body = JSON.parse(String(init?.body)) as {
+        events: ServerEvent[];
+        round_trip_ms?: number;
+        hold_handles?: { hold_id: string; handle: string }[];
+      };
+      this.pushBodies.push({ round_trip_ms: body.round_trip_ms, hold_handles: body.hold_handles });
+      for (const h of body.hold_handles ?? []) this.handles[h.hold_id] = h.handle;
       const accepted: string[] = [];
       const rejected: { id: string | null; reason: string }[] = [];
       for (const e of body.events) {
@@ -57,7 +64,7 @@ class FakeServer {
           accepted.push(e.id);
         }
       }
-      return json(200, { accepted, rejected });
+      return json(200, { accepted, rejected, hold_handles_taken: (body.hold_handles ?? []).map((h) => h.hold_id) });
     }
     if (this.deactivated) return json(403, { error: "deactivated", message: "this account has been deactivated" });
     if (url.pathname === "/sync/bootstrap") {
@@ -93,7 +100,7 @@ class FakeServer {
         return json(410, { error: "re-bootstrap", message: "this is a different database" });
       const since = Number(url.searchParams.get("since"));
       const page = this.events.filter((e) => e.seq > since).slice(0, this.pageSize);
-      return json(200, { events: page, cursor: page.at(-1)?.seq ?? since });
+      return json(200, { events: page, cursor: page.at(-1)?.seq ?? since, hold_handles: this.handles });
     }
     return json(404, { error: "not_found", message: url.pathname });
   };
@@ -434,4 +441,38 @@ test("a rejection the server could not identify surfaces as an unclean sync, but
     message: "the server refused 1 record(s) it could not identify",
   });
   expect(store.meta.last_sync_at).toBe(clock); // pull still ran; the device is not stuck
+});
+
+test("a hold's handle goes up beside the events, never in them, and the server's list replaces ours (FR-HLD-17)", async () => {
+  await sync(store, api(), () => clock);
+  await store.setMeta({ pending_handles: { "hold-1": "JD" } });
+  await store.record({
+    entity_type: "hold",
+    entity_id: "hold-1",
+    type: "created",
+    actor_id: "alice",
+    payload: { item_id: "tent-1", expires_on: "2030-01-01" },
+  });
+  expect(await sync(store, api(), () => clock)).toEqual({ ok: true });
+  expect(server.pushBodies.at(-1)!.hold_handles).toEqual([{ hold_id: "hold-1", handle: "JD" }]);
+  expect(JSON.stringify(server.events)).not.toContain("JD");
+  expect(store.meta.pending_handles).toBeUndefined();
+  expect(store.meta.hold_handles).toEqual({ "hold-1": "JD" });
+
+  // The hold ended elsewhere, so the server no longer has the handle: neither do we.
+  server.handles = {};
+  await sync(store, api(), () => clock);
+  expect(store.meta.hold_handles).toEqual({});
+});
+
+test("a handle the server has not answered for goes up again, with no events waiting", async () => {
+  await sync(store, api(), () => clock);
+  await store.setMeta({ pending_handles: { "hold-1": "JD" } });
+  server.down = true;
+  expect((await sync(store, api(), () => clock)).ok).toBe(false);
+  expect(store.meta.pending_handles).toEqual({ "hold-1": "JD" });
+  server.down = false;
+  expect(await sync(store, api(), () => clock)).toEqual({ ok: true });
+  expect(server.handles).toEqual({ "hold-1": "JD" });
+  expect(store.meta.pending_handles).toBeUndefined();
 });

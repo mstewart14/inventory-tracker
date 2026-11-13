@@ -1,0 +1,48 @@
+{
+  "name": "a hold starts live under whoever placed it, and its expiry moves",
+  "events": [
+    {
+      "id": "01000000000000000000000001",
+      "entity_type": "hold",
+      "entity_id": "h1",
+      "type": "created",
+      "actor_id": "alice",
+      "device_id": "a",
+      "device_seq": 1,
+      "effective_at": 1000,
+      "payload": {
+        "item_id": "socks",
+        "count": 3,
+        "expires_on": "2026-12-01"
+      }
+    },
+    {
+      "id": "01000000000000000000000002",
+      "entity_type": "hold",
+      "entity_id": "h1",
+      "type": "field_changed",
+      "actor_id": "alice",
+      "device_id": "a",
+      "device_seq": 2,
+      "effective_at": 2000,
+      "payload": {
+        "field": "expires_on",
+        "value": "2026-12-08",
+        "old": "2026-12-01"
+      }
+    }
+  ],
+  "state": {
+    "hold": {
+      "h1": {
+        "item_id": "socks",
+        "count": 3,
+        "expires_on": "2026-12-08",
+        "created_by": "alice",
+        "state": "live",
+        "added_at": 1000,
+        "modified_at": 2000
+      }
+    }
+  }
+}

@@ -22,15 +22,22 @@ export async function sync(store: Store, api: Api, now: () => number = Date.now)
     // replaced since we last synced: our cursor is meaningless there, whatever it says.
     let replaced = false;
     const stampRoundTrip = (offset: number | undefined, round_trip: number) =>
-      store.setMeta({ round_trip_ms: round_trip, ...(offset !== undefined ? { clock_offset: offset } : {}) });
-    if (pending.length > 0) {
+      store.setMeta({
+        round_trip_ms: round_trip,
+        ...(offset !== undefined ? { clock_offset: offset } : {}),
+      });
+    // Who each new hold is for goes up beside the events, never in them (FR-HLD-17).
+    const handles = Object.entries(store.meta.pending_handles ?? {}).map(([hold_id, handle]) => ({ hold_id, handle }));
+    if (pending.length > 0 || handles.length > 0) {
       const { data, offset, round_trip } = await api.push(
         store.meta.device_id,
         now(),
         pending.map((e) => Store.outgoing(e)),
         store.meta.round_trip_ms,
+        handles,
       );
       await stampRoundTrip(offset, round_trip);
+      await handlesTaken(store, data.hold_handles_taken);
       if (store.meta.log_id !== undefined && data.log_id !== store.meta.log_id) replaced = true;
       const pushed = await store.pushed(data.accepted, data.rejected);
       unidentified += pushed.unidentified;
@@ -107,6 +114,16 @@ export async function sync(store: Store, api: Api, now: () => number = Date.now)
   }
 }
 
+/** The server answered for these holds' handles, so they stop waiting here. One typed since stays. */
+async function handlesTaken(store: Store, taken: string[] | undefined): Promise<void> {
+  const waiting = store.meta.pending_handles;
+  if (!taken?.length || !waiting) return;
+  const left = Object.fromEntries(Object.entries(waiting).filter(([id]) => !taken.includes(id)));
+  await store.setMeta({
+    pending_handles: Object.keys(left).length > 0 ? left : undefined,
+  });
+}
+
 async function bootstrap(store: Store, api: Api): Promise<void> {
   const { data, offset, round_trip } = await api.bootstrap();
   // The snapshot, cursor and log_id all belong together (see Store.bootstrap); the offset and
@@ -119,6 +136,7 @@ async function bootstrap(store: Store, api: Api): Promise<void> {
     // The current upcoming-events list, so it works offline too (FR-RES-20). Not part of the
     // snapshot: the server owns it and replaces it whole, there is no history to replay.
     calendar_events: data.calendar_events,
+    ...(data.hold_handles ? { hold_handles: data.hold_handles } : {}),
   });
 }
 
@@ -131,6 +149,8 @@ async function pull(store: Store, api: Api): Promise<void> {
       round_trip_ms: round_trip,
       ...(offset !== undefined ? { clock_offset: offset } : {}),
       calendar_events: data.calendar_events,
+      // Whole, every time: a handle the server has deleted is gone from here too (FR-HLD-17).
+      ...(data.hold_handles ? { hold_handles: data.hold_handles } : {}),
     });
     // A non-empty page must move the cursor past where we asked from; one that does not is a
     // server bug, not something a retry fixes, so this stops the loop instead of spinning forever.

@@ -79,6 +79,10 @@ export interface Meta {
   /** Upcoming events from the calendar feeds an Admin added (FR-RES-20), refreshed on every sync.
    * Reference data the server owns, not a record made here. */
   calendar_events?: CalendarEvent[];
+  /** Who each live hold is for, as the server last sent it, whole (FR-HLD-17). Never part of the log. */
+  hold_handles?: Record<string, string>;
+  /** Handles typed here that the server has not answered for yet. They go up with the next push. */
+  pending_handles?: Record<string, string>;
 }
 
 export interface StockCheck {

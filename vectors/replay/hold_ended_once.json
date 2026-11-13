@@ -1,0 +1,59 @@
+{
+  "name": "the first ending of a hold in replay order stands, whichever arrives first",
+  "events": [
+    {
+      "id": "01000000000000000000000001",
+      "entity_type": "hold",
+      "entity_id": "h1",
+      "type": "created",
+      "actor_id": "alice",
+      "device_id": "a",
+      "device_seq": 1,
+      "effective_at": 1000,
+      "payload": {
+        "item_id": "coat-1",
+        "expires_on": "2026-12-01"
+      }
+    },
+    {
+      "id": "01000000000000000000000003",
+      "entity_type": "hold",
+      "entity_id": "h1",
+      "type": "hold_ended",
+      "actor_id": "bob",
+      "device_id": "b",
+      "device_seq": 1,
+      "effective_at": 3000,
+      "payload": {
+        "reason": "handed_out"
+      }
+    },
+    {
+      "id": "01000000000000000000000002",
+      "entity_type": "hold",
+      "entity_id": "h1",
+      "type": "hold_ended",
+      "actor_id": "alice",
+      "device_id": "a",
+      "device_seq": 2,
+      "effective_at": 2000,
+      "payload": {
+        "reason": "put_back"
+      }
+    }
+  ],
+  "state": {
+    "hold": {
+      "h1": {
+        "item_id": "coat-1",
+        "expires_on": "2026-12-01",
+        "created_by": "alice",
+        "state": "put_back",
+        "ended_at": 2000,
+        "ended_by": "alice",
+        "added_at": 1000,
+        "modified_at": 1000
+      }
+    }
+  }
+}

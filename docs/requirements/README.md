@@ -13,8 +13,9 @@ gear is lent and comes back. Donations leave for good.
 
 The functional requirements, non-functional requirements and stories still describe the Scout version, apart from roles
 (FR-USR-36 on), holds (section 12), visibility (section 13) and handing out (section 14), which are written for the
-society. Handing out is built; the others are not yet. Until a section is rewritten, read it as what the code does
-today, not what the society needs.
+society. Handing out is built. Holds are built for Staff and Administrators: Outreach requests, approval and delivery
+are not (FR-HLD-05 to 07, 14, 15, 21 to 25). Roles and visibility are not built yet. Until a section is rewritten, read
+it as what the code does today, not what the society needs.
 
 ## Documents
 
@@ -108,8 +109,6 @@ deliveries is wanted later.
 - Where are goods stored, and how is that space divided?
 - How many items and stacks are on hand, and how much moves in a day?
 - What do a donation drop-off and a pickup look like, step by step? Not known yet; to learn from the society.
-- How is a client's handle removed (FR-HLD-17) when the event log is append-only (NFR-DATA-02)? Gear Tracker could not
-  erase a name from its log (NFR-SEC-27). The handle likely has to live outside the log.
 
 ## Conventions
 
