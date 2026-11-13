@@ -88,6 +88,9 @@ export type State = Record<string, Record<string, Fields>>;
 //                                             unit, with no count: status "in", no holder, and `retired`, so
 //                                             it leaves every list as a retired item does and Unretire is the
 //                                             way back. Its `movement` says it was handed out.
+//   received    {count, source?}             more of a pool taken in (FR-INT-04): pool_in += count. Owned grows
+//                                             with it. `source` is where it came from, and is read from the
+//                                             log for the history; state keeps only the item's own `source`.
 //   weighed     {value, unit}                reading = {value, unit, at}. A null value is Unknown: reading = null
 //                                             (FR-INV-64, FR-INV-67). The last event wins, however it is read.
 //   refilled    {}                           reading = {full: true, at} (FR-INV-65).
@@ -307,6 +310,7 @@ export const KNOWN_EVENT_TYPES: ReadonlySet<string> = new Set([
   "checked_in",
   "handed_out",
   "hold_ended",
+  "received",
   "recounted",
   "pool_missing",
   "pool_found",
@@ -603,6 +607,10 @@ export function apply(entity: Fields, event: ReplayEvent): void {
         entity.retired = true;
       }
       entity.movement = movement(event);
+      break;
+    case "received":
+      // More of a stack came in (FR-INT-04).
+      entity.pool_in = ((entity.pool_in as number | undefined) ?? 0) + (p.count as number);
       break;
     case "recounted":
       // How many are in right now; what is already out is untouched (FR-INV-35).

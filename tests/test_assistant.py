@@ -2863,3 +2863,60 @@ def test_hand_out_takes_a_count_for_a_pool_and_for_nothing_else(tools, pool_id):
         assistant.hand_out(tools["stove"], count=1)
     with pytest.raises(BadRequest, match="one of its units"):
         assistant.hand_out(tools["tents"])
+
+
+# --- where it came from, and who may see it (FR-INT, FR-VIS) -----------------------------------------
+
+
+def test_a_new_item_takes_an_optional_source_and_is_staff_only_unless_marked(db_path, tools):
+    plain = assistant.create_item("Blanket")
+    stored = entity(db_path, "item", plain["item_id"])
+    assert "source" not in stored and "visibility" not in stored
+    got = assistant.get_item(plain["item_id"])
+    assert "source" not in got and "visibility" not in got
+
+    marked = assistant.create_item("Tent", source="  Church drive ", visibility="public")
+    got = assistant.get_item(marked["item_id"])
+    assert got["source"] == "Church drive" and got["visibility"] == "public"
+
+
+def test_source_and_visibility_are_changed_and_cleared(db_path, tools):
+    assistant.update_item(tools["stove"], assistant.ItemFields(source="Outdoor store", visibility="outreach"))
+    got = assistant.get_item(tools["stove"])
+    assert got["source"] == "Outdoor store" and got["visibility"] == "outreach"
+
+    changed = assistant.update_item(tools["stove"], assistant.ItemFields(source="  ", visibility="staff"))
+    assert sorted(changed["changed"]) == ["source", "visibility"]
+    stored = entity(db_path, "item", tools["stove"])
+    assert stored["source"] is None and stored["visibility"] is None
+
+
+def test_a_unit_takes_its_generics_source_and_visibility(tools):
+    assistant.update_item(tools["tents"], assistant.ItemFields(source="Scout group", visibility="public"))
+    got = assistant.get_item(tools["t1"])
+    assert got["source"] == "Scout group" and got["visibility"] == "public"
+    with pytest.raises(BadRequest, match="a unit takes its generic's visibility"):
+        assistant.update_item(tools["t1"], assistant.ItemFields(visibility="outreach"))
+
+
+def test_visibility_is_one_of_three_and_a_source_is_one_line():
+    with pytest.raises(pydantic.ValidationError):
+        assistant.ItemFields.model_validate({"visibility": "everyone"})
+    with pytest.raises(pydantic.ValidationError):
+        assistant.ItemFields(source="two\nlines")
+
+
+def test_receiving_more_of_a_pool_adds_to_what_is_in_and_records_the_source(tools, pool_id):
+    assert assistant.receive(pool_id, count=30, source="Sock company") == {
+        "item_id": pool_id,
+        "count": 30,
+        "in": 50,
+        "owned": 50,
+    }
+    latest = assistant.get_item(pool_id)["history"][0]
+    assert latest["type"] == "received" and latest["count"] == 30 and latest["source"] == "Sock company"
+    assistant.receive(pool_id, count=1)
+    assert "source" not in assistant.get_item(pool_id)["history"][0]
+
+    with pytest.raises(BadRequest, match="only a pool takes in a count"):
+        assistant.receive(tools["stove"], count=1)

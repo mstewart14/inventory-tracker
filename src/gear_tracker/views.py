@@ -269,6 +269,24 @@ def was_handed_out(it: Fields) -> bool:
     return bool(it.get("retired")) and (it.get("movement") or {}).get("type") == "handed_out"
 
 
+def visibility_of(state: State, it: Fields) -> str:
+    """Who may see an item: "staff", "outreach" or "public" (FR-VIS-01). A unit takes its generic's
+    (FR-VIS-13). Anything unknown is staff only. Mirrors visibilityOf in inventory.ts."""
+    parent = item(state, it["parent_id"]) if it.get("parent_id") else None
+    value = (parent or it).get("visibility")
+    return value if value in ("outreach", "public") else "staff"
+
+
+def source_of(state: State, it: Fields) -> str | None:
+    """Where an item came from (FR-INT-01): its own source, else its generic's (FR-INT-06).
+    Mirrors sourceOf in inventory.ts."""
+    own = it.get("source")
+    if own:
+        return str(own)
+    parent = item(state, it["parent_id"]) if it.get("parent_id") else None
+    return str(parent["source"]) if parent and parent.get("source") else None
+
+
 # --- holds (FR-HLD) ------------------------------------------------------------------------------
 
 

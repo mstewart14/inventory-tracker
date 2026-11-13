@@ -46,6 +46,8 @@ const LABELS: Record<string, string> = {
   // Dropped as a field; events that changed it are still in the log.
   price: "Price",
   supplier: "Supplier",
+  source: "Source",
+  visibility: "Visible to",
   empty_weight: "Empty weight",
   capacity: "Capacity",
   retired: "Retired",
@@ -156,6 +158,7 @@ const HAPPENED: Record<string, string> = {
   checked_in: "Checked in",
   handed_out: "Handed out",
   hold_ended: "Hold ended",
+  received: "Received",
   cleaning_started: "Sent home to clean",
   cleaning_ended: "Back from cleaning",
   cleaner_corrected: "Cleaner corrected",

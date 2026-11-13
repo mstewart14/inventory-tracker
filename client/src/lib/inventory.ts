@@ -59,6 +59,10 @@ export interface Item {
   nickname?: string | null;
   /** "YYYY-MM-DD" (FR-INV-12). */
   purchase_date?: string | null;
+  /** Where the donation came from (FR-INT-01). Never required. */
+  source?: string | null;
+  /** Who may see it beyond the society's staff (FR-VIS-01). Absent or null is staff only. */
+  visibility?: string | null;
   /** What it weighs with nothing in it, for gear weighed to see what is left (FR-INV-62). */
   empty_weight?: Weight | null;
   /** The weight of its full contents. A unit without one uses its generic's (FR-INV-63). */
@@ -290,6 +294,33 @@ export function purchaseOf(state: State, it: Item): { date: string; generic?: It
   if (it.purchase_date) return { date: it.purchase_date };
   const generic = parentOf(state, it);
   return generic?.purchase_date ? { date: generic.purchase_date, generic } : null;
+}
+
+export const VISIBILITIES = ["staff", "outreach", "public"] as const;
+export type Visibility = (typeof VISIBILITIES)[number];
+export const VISIBILITY_LABELS: Record<Visibility, string> = {
+  staff: "Staff only",
+  outreach: "Outreach",
+  public: "Public",
+};
+
+/**
+ * Who may see an item (FR-VIS-01). A unit takes its generic's (FR-VIS-13); anything unknown is
+ * staff only. Twin of visibility_of in views.py.
+ */
+export function visibilityOf(state: State, it: Item): Visibility {
+  const value = (parentOf(state, it) ?? it).visibility;
+  return value === "outreach" || value === "public" ? value : "staff";
+}
+
+/** Where an item came from: its own source, else its generic's (FR-INT-06). Twin of source_of in views.py. */
+export const sourceOf = (state: State, it: Item): string | null => it.source || parentOf(state, it)?.source || null;
+
+/** Sources already typed on items, for the form to suggest (FR-INT-03). */
+export function usedSources(state: State): string[] {
+  const seen = new Set<string>();
+  for (const it of items(state)) if (it.source && !it.deleted) seen.add(it.source);
+  return [...seen].sort((a, b) => a.localeCompare(b));
 }
 
 /** The generic a unit belongs to, if this device has it. */

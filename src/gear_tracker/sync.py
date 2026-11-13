@@ -327,6 +327,19 @@ def _check_entity_rules(conn: sqlite3.Connection, principal: Principal, incoming
             raise Rejected("a pool goes home by count, a single item without one (FR-OUT-46)")
         if not item.get("pool") and not payload.get("movement_id"):
             raise Rejected("a single item says which check-out it goes home from (FR-OUT-46)")
+    if entity_type == "item" and kind == "received":
+        item = derived.get_entity(conn, "item", str(incoming.get("entity_id"))) or {}
+        if item.get("deleted"):
+            raise Rejected("this item was deleted")
+        if not item.get("pool"):
+            raise Rejected("only a stack takes in a count; anything else is a new item (FR-INT-04)")
+    if entity_type == "item" and kind == "field_changed":
+        payload = incoming.get("payload")
+        field = payload.get("field") if isinstance(payload, dict) else None
+        if field == "visibility":
+            item = derived.get_entity(conn, "item", str(incoming.get("entity_id"))) or {}
+            if item.get("parent_id"):
+                raise Rejected("a unit takes its generic's visibility (FR-VIS-13)")
     if entity_type == "item" and kind == "recounted":
         item = derived.get_entity(conn, "item", str(incoming.get("entity_id"))) or {}
         if not item.get("pool"):

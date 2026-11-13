@@ -432,6 +432,8 @@ the home screen to escape eviction (NFR-DEP-06), and pending work is visible eno
 | FR-MCP-64 | Should   | `put_back_hold` ends a live hold and returns its goods to general stock (FR-HLD-10).                                                                                                                                                                                                                                                                                                                                                                                                             |
 | FR-MCP-65 | Should   | `hand_out_hold` hands a live hold's goods out and ends the hold (FR-HLD-16).                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | FR-MCP-66 | Should   | `hand_out` refuses goods that are on hold (FR-HLD-08).                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| FR-MCP-67 | Should   | `receive` takes in a count of a pool, with an optional source (FR-INT-04).                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| FR-MCP-68 | Should   | `create_item` and `update_item` take a source and a visibility, and `get_item` and `search_items` show them (FR-INT-01, FR-VIS-01).                                                                                                                                                                                                                                                                                                                                                              |
 | FR-MCP-07 | Could    | OAuth for assistant clients that refuse a plain bearer token.                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | FR-MCP-04 | Won't    | Withdrawn: nothing an Admin does is reachable. Replaced by FR-MCP-10; the role on the token decides.                                                                                                                                                                                                                                                                                                                                                                                             |
 | FR-MCP-31 | Won't    | Delete the signed-in user's own account (FR-USR-25). It locks the person out until an Admin restores them, and a chat request is too easy to misread for that.                                                                                                                                                                                                                                                                                                                                   |
@@ -509,6 +511,8 @@ Staff see everything. An item is shown to anyone else only when someone has mark
 | FR-VIS-10 | Must     | Outreach sees no hold but their own.                                                                                     |
 | FR-VIS-11 | Must     | Goods on someone else's hold are left out of the count Outreach sees, with nothing to say they are held.                 |
 | FR-VIS-12 | Must     | An item with none available, and no hold of theirs on it, is not shown to Outreach.                                      |
+| FR-VIS-13 | Must     | A unit takes its generic's visibility and has none of its own.                                                           |
+| FR-VIS-14 | Must     | An item's page shows who it is visible to.                                                                               |
 
 ## 14. Handing out (DST)
 
@@ -524,3 +528,18 @@ Goods leave for good. Nothing is expected back, and nobody is recorded as receiv
 | FR-DST-06 | Must     | A pool's page shows how many were handed out in all.                                                                    |
 | FR-DST-07 | Must     | An item's history shows each hand-out: who made it, when, and how many of a pool.                                       |
 | FR-DST-08 | Must     | A hand-out records nothing about who received the goods.                                                                |
+
+## 15. Intake (INT)
+
+A donation arrives and is recorded: a new item, or more of a stack already on the shelf. Labels and codes are section 3.
+
+| ID        | Priority | Requirement                                                                                                   |
+| --------- | -------- | ------------------------------------------------------------------------------------------------------------- |
+| FR-INT-01 | Must     | A single item, a generic and a pool each record a source: where the donation came from.                       |
+| FR-INT-02 | Must     | A source is never required.                                                                                   |
+| FR-INT-03 | Must     | The source field suggests sources already used.                                                               |
+| FR-INT-04 | Must     | More of a pool is received by count, default 1. The count adds to what is in.                                 |
+| FR-INT-05 | Must     | A receipt takes an optional source, and the pool's history shows it with who recorded it, when, and how many. |
+| FR-INT-06 | Must     | A unit shows its generic's source unless it has its own.                                                      |
+| FR-INT-07 | Must     | A source is one line of at most 200 characters.                                                               |
+| FR-INT-08 | Must     | An item's page shows its source.                                                                              |

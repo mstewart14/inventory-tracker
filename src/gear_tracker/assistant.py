@@ -312,10 +312,21 @@ def _item_brief(state: dict[str, Any], it: dict[str, Any]) -> dict[str, Any]:
             brief[flag] = True
     if views.was_handed_out(it):
         brief["handed_out"] = True
+    _intake_facts(state, it, brief)
     categories = [views.category_name(state, cid) for cid in views.categories_of(state, it)]
     if categories:
         brief["categories"] = categories
     return brief
+
+
+def _intake_facts(state: dict[str, Any], it: dict[str, Any], out: dict[str, Any]) -> None:
+    """Who may see it, when that is anyone beyond staff (FR-VIS-01), and where it came from (FR-INT-01)."""
+    visibility = views.visibility_of(state, it)
+    if visibility != "staff":
+        out["visibility"] = visibility
+    source = views.source_of(state, it)
+    if source:
+        out["source"] = source
 
 
 def _row(state: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
@@ -417,7 +428,7 @@ def _history(conn: sqlite3.Connection, state: dict[str, Any], item_id: str) -> l
         SELECT * FROM events
         WHERE entity_type = 'item' AND entity_id IN ({marks})
         AND type IN (
-            'checked_out', 'checked_in', 'handed_out', 'recounted', 'pool_missing', 'pool_found',
+            'checked_out', 'checked_in', 'handed_out', 'received', 'recounted', 'pool_missing', 'pool_found',
             'pool_written_off', 'cleaning_ended', 'cleaning_started'
         )
         ORDER BY effective_at DESC, device_id DESC, device_seq DESC LIMIT ?
@@ -459,6 +470,8 @@ def _history(conn: sqlite3.Connection, state: dict[str, Any], item_id: str) -> l
             entry["cleaner"] = payload["cleaner"]
         if payload.get("reason"):
             entry["reason"] = payload["reason"]
+        if row["type"] == "received" and payload.get("source"):
+            entry["source"] = payload["source"]
         out.append(entry)
     return out
 
@@ -908,6 +921,13 @@ def duplicate_reservation(reservation_id: str, event: str, starts: IsoDate, ends
 # --- item tools -------------------------------------------------------------------------------------
 
 
+Source = Annotated[str, StringConstraints(max_length=200, pattern=r"^[^\n]*$")]
+"""Where a donation came from (FR-INT-01). One line; never required (FR-INT-02)."""
+
+Visibility = Literal["staff", "outreach", "public"]
+"""Who may see an item (FR-VIS-01). "staff" is the default and is stored as nothing."""
+
+
 class ItemFields(BaseModel):
     """What an assistant may change on an item. Anything else is the app's job.
 
@@ -929,6 +949,8 @@ class ItemFields(BaseModel):
     category_ids: list[str] | None = None
     empty_weight: Weight | None = None
     capacity: Weight | None = None
+    source: Source | None = None
+    visibility: Visibility | None = None
 
 
 def _home(state: dict[str, Any], location_id: str | None) -> None:
@@ -965,8 +987,13 @@ def create_item(
     category_ids: list[str] | None = None,
     units: UnitCount | None = None,
     home_user_id: str | None = None,
+    source: Source | None = None,
+    visibility: Visibility = "staff",
 ) -> dict[str, Any]:
     """Add gear to the inventory (FR-INV-01).
+
+    `source` is where the donation came from, and is optional (FR-INT-01). `visibility` is who may see the
+    item beyond the society's staff: "staff" (the default), "outreach", or "public" (FR-VIS-01).
 
     `home_user_id` makes a person its home ("Kept by Sam") instead of a location (FR-INV-59).
 
@@ -1014,6 +1041,10 @@ def create_item(
             payload["description"] = description.strip()
         if category_ids:
             payload["category_ids"] = _sorted_categories(state, category_ids)
+        if source and source.strip():
+            payload["source"] = source.strip()
+        if visibility != "staff":
+            payload["visibility"] = visibility
         item_id = new_ulid()
         drafts = [_draft("item", item_id, "created", payload)]
         unit_ids: list[str] = []
@@ -1120,6 +1151,12 @@ def update_item(item_id: str, fields: ItemFields) -> dict[str, Any]:
             for category_id in patch["category_ids"] or []:
                 _category(state, category_id)
             patch["category_ids"] = _sorted_categories(state, patch["category_ids"] or [])
+        if "visibility" in patch:
+            if it.get("parent_id"):
+                raise BadRequest("a unit takes its generic's visibility (FR-VIS-13)")
+            patch["visibility"] = None if patch["visibility"] in (None, "staff") else patch["visibility"]
+        if "source" in patch:
+            patch["source"] = (patch["source"] or "").strip() or None
         if ("empty_weight" in patch or "capacity" in patch) and views.is_pool(it):
             raise BadRequest("a pool is counted, not weighed")
         if patch.get("empty_weight") and it.get("generic"):
@@ -2179,6 +2216,22 @@ def hand_out_hold(hold_id: str) -> dict[str, Any]:
         return {"hold_id": hold["id"], "state": "handed_out", "item_id": it["id"]}
 
 
+def receive(item_id: str, count: Count, source: Source | None = None) -> dict[str, Any]:
+    """Take in more of a pool (FR-INT-04): `count` is added to what is in. `source` is where it came from,
+    and is optional. Anything that is not a pool is a new item; use create_item."""
+    with _open() as (conn, who):
+        state = _state(conn)
+        it = _item(state, item_id)
+        if not views.is_pool(it):
+            raise BadRequest("only a pool takes in a count; add anything else with create_item")
+        payload: dict[str, Any] = {"count": count}
+        if source and source.strip():
+            payload["source"] = source.strip()
+        _push(conn, who, [_draft("item", it["id"], "received", payload)])
+        counts = views.pool_counts(_item(_state(conn), item_id))
+        return {"item_id": it["id"], "count": count, "in": counts["in"], "owned": counts["owned"]}
+
+
 def recount(item_id: str, count: Annotated[StrictInt, Field(ge=0)], reason: str | None = None) -> dict[str, Any]:
     """Record how many of a pool are in right now (FR-INV-35). Anyone signed in; pool only.
 
@@ -3170,6 +3223,7 @@ TOOLS = [
     check_out,
     check_in,
     hand_out,
+    receive,
     list_holds,
     place_hold,
     extend_hold,

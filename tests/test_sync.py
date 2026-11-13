@@ -805,6 +805,20 @@ def test_a_generic_item_is_not_handed_out(db):
     assert reasons(db, USER, bad) == ["a generic item is not handed out; its units are (FR-DST-01)"]
 
 
+def test_only_a_pool_takes_in_a_count_and_visibility_is_one_of_two(db):
+    push(db, USER, batch(USER, own(USER, type="created", payload={"name": "Coat"})), now=T0)
+    more = own(USER, type="received", payload={"count": 2}, device_seq=2)
+    assert reasons(db, USER, more) == ["only a stack takes in a count; anything else is a new item (FR-INT-04)"]
+    wide = own(USER, type="field_changed", payload={"field": "visibility", "value": "all", "old": None}, device_seq=3)
+    assert reasons(db, USER, wide) == ["visibility must be outreach, public, or null for staff only (FR-VIS-01)"]
+    public = own(
+        USER, type="field_changed", payload={"field": "visibility", "value": "public", "old": None}, device_seq=4
+    )
+    assert reasons(db, USER, public) == []
+    born = own(USER, entity_id="hat", type="created", payload={"name": "Hat", "visibility": "all"}, device_seq=5)
+    assert reasons(db, USER, born) == ["visibility: Input should be 'outreach' or 'public'"]
+
+
 def test_recount_is_only_for_a_pool(db):
     push(db, USER, batch(USER, own(USER, type="created", payload={"name": "Tent"})), now=T0)
     bad = own(USER, type="recounted", payload={"count": 5, "reason": "shelf check"}, device_seq=2)

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { RefObject } from "react";
 import { createCategory, type ItemInput } from "../lib/actions";
-import { activeUsers, categories, subLocations } from "../lib/inventory";
+import { activeUsers, categories, subLocations, usedSources, VISIBILITIES, VISIBILITY_LABELS } from "../lib/inventory";
 import { HomeSelect } from "./HomeSelect";
 import type { Store } from "../lib/store";
 
@@ -22,6 +22,8 @@ export const EMPTY_ITEM: ItemInput = {
   sub_location: "",
   purchase_date: "",
   category_ids: [],
+  source: "",
+  visibility: null,
 };
 
 /** The tick that turns one item into a name several things share (FR-INV-21, FR-INV-26). */
@@ -158,6 +160,35 @@ export function ItemFields({ store, values, onChange, nameRef, generic }: Props)
       <label>
         <span>Description</span>
         <textarea value={values.description ?? ""} onChange={(e) => set({ description: e.target.value })} rows={3} />
+      </label>
+      <label>
+        <span>Source (optional)</span>
+        <input
+          type="text"
+          list="item-sources"
+          maxLength={200}
+          placeholder="Where it came from, e.g. Community drive"
+          value={values.source ?? ""}
+          onChange={(e) => set({ source: e.target.value })}
+        />
+        <datalist id="item-sources">
+          {usedSources(store.state).map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
+      </label>
+      <label>
+        <span>Visible to</span>
+        <select
+          value={values.visibility ?? "staff"}
+          onChange={(e) => set({ visibility: e.target.value === "staff" ? null : e.target.value })}
+        >
+          {VISIBILITIES.map((v) => (
+            <option key={v} value={v}>
+              {VISIBILITY_LABELS[v]}
+            </option>
+          ))}
+        </select>
       </label>
       <BoughtOn value={values.purchase_date} onChange={(purchase_date) => set({ purchase_date })} />
     </>

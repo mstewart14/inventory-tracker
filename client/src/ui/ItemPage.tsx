@@ -44,6 +44,10 @@ import {
   search,
   takesUnits,
   unitsOf,
+  usedSources,
+  sourceOf,
+  VISIBILITY_LABELS,
+  visibilityOf,
   wasHandedOut,
 } from "../lib/inventory";
 import { itemReservations } from "../lib/itemReservations";
@@ -61,6 +65,7 @@ import {
   correctPoolCleaner,
   type HistoryEntry,
   recount,
+  receivePool,
   handOutPool,
 } from "../lib/movement";
 import { openRepairs, raiseTicket, type Repair, repairsFor, stateLabel } from "../lib/repairs";
@@ -169,6 +174,8 @@ export function ItemPage({ store, id }: Props) {
           home_user_id: it.home_user_id ?? null,
           sub_location: it.sub_location ?? "",
           purchase_date: it.purchase_date ?? "",
+          source: it.source ?? "",
+          visibility: it.visibility ?? null,
           category_ids: categoriesOf(state, it),
           empty_weight: it.empty_weight ?? null,
           capacity: it.capacity ?? null,
@@ -453,6 +460,10 @@ export function ItemPage({ store, id }: Props) {
               <h3 className="section">Details</h3>
             </summary>
             <dl className="facts">
+              <dt>Source</dt>
+              <dd>{sourceOf(state, it) || "—"}</dd>
+              <dt>Visible to</dt>
+              <dd>{VISIBILITY_LABELS[visibilityOf(state, it)]}</dd>
               <dt>Bought</dt>
               <dd>{boughtLabel(state, it) || "—"}</dd>
               <dt>QR codes</dt>
@@ -766,6 +777,7 @@ export function describeMovement(state: State, e: HistoryEntry): string {
   const who = userName(state, e.actor_id);
   const when = localMinute(e.at);
   // A pool's lines carry a count instead of the whole item (FR-INV-34, FR-INV-35).
+  if (e.type === "received") return `Received ${e.count}${e.source ? ` from ${e.source}` : ""} by ${who} · ${when}`;
   if (e.type === "handed_out") return `Handed out${e.count != null ? ` ${e.count}` : ""} by ${who} · ${when}`;
   if (e.type === "recounted") return `Recounted to ${e.count} by ${who}${e.reason ? `: ${e.reason}` : ""} · ${when}`;
   if (e.type === "pool_missing") {
@@ -1566,6 +1578,10 @@ function PoolPage({
           <h3 className="section">Details</h3>
         </summary>
         <dl className="facts">
+          <dt>Source</dt>
+          <dd>{sourceOf(state, it) || "—"}</dd>
+          <dt>Visible to</dt>
+          <dd>{VISIBILITY_LABELS[visibilityOf(state, it)]}</dd>
           <dt>Bought</dt>
           <dd>{boughtLabel(state, it) || "—"}</dd>
           <dt>QR codes</dt>
@@ -1641,7 +1657,7 @@ function cleaningShares(it: Item) {
   return [...found.values()];
 }
 
-type PoolMode = "give" | "out" | "in" | "recount" | "home" | "back" | "missing" | "found" | "writeoff";
+type PoolMode = "give" | "receive" | "out" | "in" | "recount" | "home" | "back" | "missing" | "found" | "writeoff";
 
 /**
  * Hand out for good (FR-DST-02), check out, return, recount, and mark missing or found a pool, by count (FR-OUT-22, FR-OUT-23,
@@ -1662,7 +1678,7 @@ export function PoolActions({
   /** What was done, and which way it went: a scan during a packing session grows the reservation on "out". */
   onMoved: (
     message: string,
-    kind: "give" | "out" | "in" | "recount" | "back" | "missing" | "found" | "writeoff",
+    kind: "give" | "receive" | "out" | "in" | "recount" | "back" | "missing" | "found" | "writeoff",
   ) => void;
   children?: React.ReactNode;
 }) {
@@ -1763,6 +1779,8 @@ export function PoolActions({
     try {
       if (mode === "give") {
         await handOutPool(store, it.id, amount);
+      } else if (mode === "receive") {
+        await receivePool(store, it.id, amount, reason);
       } else if (mode === "out") {
         const { event, reservation_id, waits } = recorded();
         await checkOutPool(store, it.id, {
@@ -1816,21 +1834,23 @@ export function PoolActions({
     const label =
       mode === "give"
         ? `Handed out ${amount}`
-        : mode === "out"
-          ? `Checked out ${amount}`
-          : mode === "home"
-            ? `Sent home ${amount} to ${cleaner.trim()}`
-            : mode === "back"
-              ? `Back from ${homeShare?.cleaner ?? "home"} ${amount}`
-              : mode === "in"
-                ? `Returned ${amount}`
-                : mode === "missing"
-                  ? `Marked ${amount} missing`
-                  : mode === "found"
-                    ? `Found ${amount}`
-                    : mode === "writeoff"
-                      ? `Wrote off ${amount}`
-                      : `Recounted to ${amount}`;
+        : mode === "receive"
+          ? `Received ${amount}`
+          : mode === "out"
+            ? `Checked out ${amount}`
+            : mode === "home"
+              ? `Sent home ${amount} to ${cleaner.trim()}`
+              : mode === "back"
+                ? `Back from ${homeShare?.cleaner ?? "home"} ${amount}`
+                : mode === "in"
+                  ? `Returned ${amount}`
+                  : mode === "missing"
+                    ? `Marked ${amount} missing`
+                    : mode === "found"
+                      ? `Found ${amount}`
+                      : mode === "writeoff"
+                        ? `Wrote off ${amount}`
+                        : `Recounted to ${amount}`;
     setBusy(false);
     setMode(null);
     onMoved(`${label} · ${displayName(state, it)}`, mode === "home" ? "out" : mode);
@@ -1933,6 +1953,24 @@ export function PoolActions({
             />
           </label>
         )}
+        {mode === "receive" && (
+          <label>
+            <span>Source (optional)</span>
+            <input
+              type="text"
+              list="pool-sources"
+              maxLength={200}
+              placeholder="Where it came from, e.g. Community drive"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+            <datalist id="pool-sources">
+              {usedSources(state).map((x) => (
+                <option key={x} value={x} />
+              ))}
+            </datalist>
+          </label>
+        )}
         {(mode === "recount" || mode === "writeoff") && (
           <label>
             <span>Why (optional)</span>
@@ -1962,21 +2000,23 @@ export function PoolActions({
             >
               {mode === "give"
                 ? "Hand out"
-                : mode === "out"
-                  ? "Check out"
-                  : mode === "home"
-                    ? "Send home"
-                    : mode === "back"
-                      ? "Back from home"
-                      : mode === "in"
-                        ? "Return"
-                        : mode === "missing"
-                          ? "Mark missing"
-                          : mode === "found"
-                            ? "Found"
-                            : mode === "writeoff"
-                              ? "Write off"
-                              : "Recount"}
+                : mode === "receive"
+                  ? "Receive"
+                  : mode === "out"
+                    ? "Check out"
+                    : mode === "home"
+                      ? "Send home"
+                      : mode === "back"
+                        ? "Back from home"
+                        : mode === "in"
+                          ? "Return"
+                          : mode === "missing"
+                            ? "Mark missing"
+                            : mode === "found"
+                              ? "Found"
+                              : mode === "writeoff"
+                                ? "Write off"
+                                : "Recount"}
             </button>
             <button
               type="button"
@@ -1992,6 +2032,9 @@ export function PoolActions({
           <div className="row" key="pick">
             <button type="button" className="primary" onClick={() => open("give")}>
               Hand out
+            </button>
+            <button type="button" onClick={() => open("receive")}>
+              Receive
             </button>
             <button type="button" onClick={() => open("out")}>
               Check out
@@ -2160,6 +2203,10 @@ function GenericPage({
           <h3 className="section">Details</h3>
         </summary>
         <dl className="facts">
+          <dt>Source</dt>
+          <dd>{sourceOf(state, it) || "—"}</dd>
+          <dt>Visible to</dt>
+          <dd>{VISIBILITY_LABELS[visibilityOf(state, it)]}</dd>
           <dt>Bought</dt>
           <dd>{boughtLabel(state, it) || "—"}</dd>
           <dt>Added</dt>

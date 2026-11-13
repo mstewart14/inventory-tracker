@@ -607,6 +607,20 @@ The access history on an item page (FR-INV-09) is read from a log: the server's,
 90 days of events the device holds (NFR-DATA-03). One render path draws either, so the rows do not change shape when the
 signal does; only the note under them does. See [History](#history).
 
+## Intake and visibility
+
+An item, a generic and a pool carry two plain fields. `source` is where the donation came from (FR-INT-01): one line,
+optional, suggested from the sources already in use. `visibility` is who may see the item beyond the society's staff
+(FR-VIS-01): `outreach` or `public`, and absent or null for staff only, so every item made before the field existed is
+staff only without a migration. A unit has neither of its own and reads its generic's (`visibility_of`, `source_of`, and
+their twins in `inventory.ts`), the same way it reads its categories. The mark is stored and shown; what Outreach and
+the public are sent is decided by it once those exist.
+
+More of a pool arrives as `received {count, source?}`, which adds to `pool_in` (FR-INT-04). It is not a recount: a
+recount says how many are there and loses how many came in. A receipt's `source` stays on the log and is read back for
+the history; state keeps only the pool's own `source`. A source is on the permanent log, so it should name a drive or an
+organisation, not a person who may later ask to be forgotten.
+
 ## Holds
 
 A hold sets goods aside for a client until a day (FR-HLD-01). It is an entity on the log, `hold`: `created` with the

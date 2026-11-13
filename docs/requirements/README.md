@@ -12,10 +12,11 @@ same job: a wide variety of things arrive and each needs a name, a place, and a 
 gear is lent and comes back. Donations leave for good.
 
 The functional requirements, non-functional requirements and stories still describe the Scout version, apart from roles
-(FR-USR-36 on), holds (section 12), visibility (section 13) and handing out (section 14), which are written for the
-society. Handing out is built. Holds are built for Staff and Administrators: Outreach requests, approval and delivery
-are not (FR-HLD-05 to 07, 14, 15, 21 to 25). Roles and visibility are not built yet. Until a section is rewritten, read
-it as what the code does today, not what the society needs.
+(FR-USR-36 on), holds (section 12), visibility (section 13), handing out (section 14) and intake (section 15), which are
+written for the society. Handing out and intake are built. Holds are built for Staff and Administrators: Outreach
+requests, approval and delivery are not (FR-HLD-05 to 07, 14, 15, 21 to 25). An item carries its visibility mark, but
+nothing reads it yet: Outreach accounts and the public catalogue are not built (FR-VIS-02 to 07, 09 to 12). Roles are
+not built yet. Until a section is rewritten, read it as what the code does today, not what the society needs.
 
 ## Documents
 
@@ -105,6 +106,7 @@ deliveries is wanted later.
 - Does the public catalogue show how many are available? No for now (FR-VIS-05).
 - Does Outreach still see an item when none is available (FR-VIS-12)? Assumed: no.
 - Is a delivery taken by one named Staff member (FR-HLD-25)? Assumed, so that there is someone to tell.
+- May a source name a person who donated? It is written to the permanent log, so it could not be erased later.
 - How many people hold each role?
 - Where are goods stored, and how is that space divided?
 - How many items and stacks are on hand, and how much moves in a day?

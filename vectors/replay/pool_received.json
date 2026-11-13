@@ -1,0 +1,71 @@
+{
+  "name": "receiving more of a pool adds to what is in; the item keeps its own source, and visibility is a plain field",
+  "events": [
+    {
+      "id": "01000000000000000000000001",
+      "entity_type": "item",
+      "entity_id": "socks",
+      "type": "created",
+      "actor_id": "alice",
+      "device_id": "a",
+      "device_seq": 1,
+      "effective_at": 1000,
+      "payload": {
+        "name": "Socks",
+        "generic": true,
+        "pool": true,
+        "quantity": 10,
+        "source": "Church drive",
+        "visibility": "public"
+      }
+    },
+    {
+      "id": "01000000000000000000000002",
+      "entity_type": "item",
+      "entity_id": "socks",
+      "type": "received",
+      "actor_id": "bob",
+      "device_id": "b",
+      "device_seq": 1,
+      "effective_at": 2000,
+      "payload": {
+        "count": 24,
+        "source": "Sock company"
+      }
+    },
+    {
+      "id": "01000000000000000000000003",
+      "entity_type": "item",
+      "entity_id": "socks",
+      "type": "field_changed",
+      "actor_id": "alice",
+      "device_id": "a",
+      "device_seq": 2,
+      "effective_at": 3000,
+      "payload": {
+        "field": "visibility",
+        "value": null,
+        "old": "public"
+      }
+    }
+  ],
+  "state": {
+    "item": {
+      "socks": {
+        "name": "Socks",
+        "generic": true,
+        "pool": true,
+        "quantity": 10,
+        "source": "Church drive",
+        "visibility": null,
+        "added_at": 1000,
+        "modified_at": 3000,
+        "status": "in",
+        "holder_id": null,
+        "pool_in": 34,
+        "pool_out": {},
+        "pool_reservations": {}
+      }
+    }
+  }
+}

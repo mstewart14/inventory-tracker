@@ -30,6 +30,8 @@ export type ItemInput = Pick<
   | "home_user_id"
   | "sub_location"
   | "purchase_date"
+  | "source"
+  | "visibility"
   | "category_ids"
   | "empty_weight"
   | "capacity"
@@ -226,6 +228,8 @@ export async function makeGeneric(store: Store, id: string, number = "1"): Promi
     ...(it.home_user_id ? { home_user_id: it.home_user_id } : {}),
     sub_location: it.sub_location ?? "",
     purchase_date: it.purchase_date ?? null,
+    source: it.source ?? null,
+    visibility: it.visibility ?? null,
     category_ids: categoriesOf(store.state, it),
   });
   await changed(store, "item", id, { parent_id: genericId, number: first, name: null, purchase_date: null });
@@ -265,6 +269,8 @@ export async function makePool(store: Store, id: string, quantity: number): Prom
       ...(it.home_user_id ? { home_user_id: it.home_user_id } : {}),
       sub_location: it.sub_location ?? "",
       purchase_date: it.purchase_date ?? null,
+      source: it.source ?? null,
+      visibility: it.visibility ?? null,
       category_ids: categoriesOf(store.state, it),
     },
     quantity,
@@ -465,6 +471,8 @@ export async function makeSingle(store: Store, genericId: string): Promise<strin
       ...(generic.home_user_id ? { home_user_id: generic.home_user_id } : {}),
       sub_location: generic.sub_location ?? "",
       purchase_date: generic.purchase_date ?? null,
+      source: generic.source ?? null,
+      visibility: generic.visibility ?? null,
       category_ids: categoriesOf(store.state, generic),
       ...(generic.capacity ? { capacity: generic.capacity } : {}),
     });
@@ -495,6 +503,8 @@ export async function makeSingle(store: Store, genericId: string): Promise<strin
       home_user_id: ownHome ? unit.home_user_id ?? null : generic.home_user_id ?? null,
       sub_location: ownHome ? unit.sub_location ?? "" : generic.sub_location ?? "",
       purchase_date: unit.purchase_date ?? generic.purchase_date ?? null,
+      source: unit.source ?? generic.source ?? null,
+      visibility: generic.visibility ?? null,
       // It stays weighed: the capacity it read from its generic is now its own (FR-INV-63).
       capacity: unit.capacity ?? generic.capacity ?? null,
     }),

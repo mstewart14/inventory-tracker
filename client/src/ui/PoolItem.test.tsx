@@ -577,3 +577,28 @@ test("handing out more of a pool than are in is refused, offering a recount that
   await user.click(screen.getByRole("button", { name: "Hand out" }));
   await waitFor(() => expect(inv.poolCounts(inv.item(store.state, socks)!)).toMatchObject({ in: 3, given: 5 }));
 });
+
+test("more of a stack is received by count, with where it came from if anyone says (FR-INT-04, FR-INT-05)", async () => {
+  const socks = await act.createPool(store, { name: "Socks", source: "Church drive" }, 10);
+  navigate(`/items/${socks}`);
+  renderInShell(<ItemPage store={store} id={socks} />);
+
+  await user.click(screen.getByRole("button", { name: "Receive" }));
+  const count = screen.getByLabelText("How many");
+  await user.clear(count);
+  await user.type(count, "24");
+  await user.type(screen.getByLabelText("Source (optional)"), "Sock company");
+  await user.click(screen.getByRole("button", { name: "Receive" }));
+  expect(await screen.findByText("Received 24 · Socks")).toBeInTheDocument();
+  expect(store.pending.at(-1)).toMatchObject({ type: "received", payload: { count: 24, source: "Sock company" } });
+  expect(fact("In")).toBe("34");
+  expect(fact("Owned")).toBe("34");
+  // The stack's own source is where it first came from.
+  expect(fact("Source")).toBe("Church drive");
+
+  // A source is never required (FR-INT-02).
+  await user.click(screen.getByRole("button", { name: "Receive" }));
+  await user.click(screen.getByRole("button", { name: "Receive" }));
+  await waitFor(() => expect(inv.poolCounts(inv.item(store.state, socks)!).in).toBe(35));
+  expect(store.pending.at(-1)!.payload).toEqual({ count: 1 });
+});

@@ -57,6 +57,9 @@ function copyOf(
       home_user_id: it.home_user_id ?? null,
       sub_location: it.sub_location ?? "",
       purchase_date: it.purchase_date ?? "",
+      // Another like it may have come from somewhere else; who may see it is the same.
+      source: "",
+      visibility: it.visibility ?? null,
       category_ids: categoriesOf(store.state, it),
       empty_weight: it.empty_weight ?? null,
       capacity: it.capacity ?? null,

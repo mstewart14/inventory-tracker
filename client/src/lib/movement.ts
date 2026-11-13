@@ -411,6 +411,14 @@ export async function handOutPool(store: Store, itemId: string, count: number) {
   return move(store, itemId, "handed_out", { count });
 }
 
+/** Take in more of a pool (FR-INT-04): `count` is added to what is in. Where it came from is optional. */
+export async function receivePool(store: Store, itemId: string, count: number, source?: string) {
+  poolItem(store, itemId);
+  if (!Number.isInteger(count) || count < 1) throw new Error("pick a count of at least 1");
+  const from = source?.trim();
+  return move(store, itemId, "received", from ? { count, source: from } : { count });
+}
+
 /** How many are in right now, with an optional reason (FR-INV-35). What is already out is untouched; anyone signed in may record one. */
 export async function recount(store: Store, itemId: string, count: number, reason?: string) {
   poolItem(store, itemId);
@@ -774,6 +782,7 @@ export interface HistoryEntry {
     | "checked_out"
     | "checked_in"
     | "handed_out"
+    | "received"
     | "recounted"
     | "pool_missing"
     | "pool_found"
@@ -792,6 +801,8 @@ export interface HistoryEntry {
   reason?: string | null;
   /** Set when the gear went home with someone (FR-OUT-46), as its last correction reads. */
   cleaner?: string;
+  /** Set only on a "received" line (FR-INT-04): where the goods came from, when it was said. */
+  source?: string;
 }
 
 /**
@@ -816,6 +827,7 @@ export function history(log: Log, itemId: string): HistoryEntry[] {
         e.type === "checked_out" ||
         e.type === "checked_in" ||
         e.type === "handed_out" ||
+        e.type === "received" ||
         e.type === "recounted" ||
         e.type === "pool_missing" ||
         e.type === "pool_found" ||
@@ -835,6 +847,7 @@ export function history(log: Log, itemId: string): HistoryEntry[] {
       count: (e.payload.count as number | undefined) ?? undefined,
       reason: (e.payload.reason as string | undefined) ?? null,
       cleaner: renamed.get(e.id) ?? (e.payload.cleaner as string | undefined),
+      source: e.type === "received" ? (e.payload.source as string | undefined) : undefined,
     }))
     .reverse();
 }

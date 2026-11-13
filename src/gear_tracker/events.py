@@ -214,6 +214,30 @@ class HandOut(Payload):
     hold_id: Ulid | None = None
 
 
+VISIBILITIES = ("outreach", "public")
+"""Who outside the society's own staff may see an item (FR-VIS-01). Absent or null is staff only."""
+
+Visibility = Literal["outreach", "public"]
+
+MAX_SOURCE = 200
+
+
+def _source(value: Any) -> Any:
+    """Where a donation came from (FR-INT-01): one line of text, or nothing."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or len(value) > MAX_SOURCE or "\n" in value:
+        raise ValueError(f"source is one line of at most {MAX_SOURCE} characters")
+    return value
+
+
+class Received(Payload):
+    """More of a pool taken in (FR-INT-04), and optionally where it came from."""
+
+    count: Annotated[int, Field(ge=1)]
+    source: Annotated[str | None, BeforeValidator(_blank_is_none), AfterValidator(_source)] = None
+
+
 class Recount(Payload):
     """How many are in right now, and optionally why (FR-INV-35). Anyone may record one; `pool_out` is untouched."""
 
@@ -389,6 +413,8 @@ class ItemCreated(Payload):
     quantity: Annotated[int, Field(ge=0)] | None = None
     empty_weight: Weight | None = None
     capacity: Capacity | None = None
+    visibility: Visibility | None = None
+    source: Annotated[str | None, AfterValidator(_source)] = None
 
     @model_validator(mode="after")
     def _quantity_matches_pool(self):
@@ -492,6 +518,10 @@ class FieldChanged(_Incoming):
                 (Capacity if field == "capacity" else Weight).model_validate(value)
             except ValidationError as exc:
                 raise ValueError(f"{field}: {_first_error(exc)}") from None
+        if self.entity_type == "item" and field == "visibility" and value is not None and value not in VISIBILITIES:
+            raise ValueError("visibility must be outreach, public, or null for staff only (FR-VIS-01)")
+        if self.entity_type == "item" and field == "source":
+            _source(value)
         if self.entity_type == "repair" and field == "state" and value not in REPAIR_STATES:
             raise ValueError(f"state must be one of {', '.join(REPAIR_STATES)}")
         if self.entity_type == "reservation" and field in ("items", "generics"):
@@ -591,6 +621,13 @@ class HoldEnded(_Incoming):
 class HandedOut(_ItemOnly):
     type: Literal["handed_out"]
     payload: HandOut
+
+
+class ReceivedEvent(_ItemOnly):
+    """Refused off a pool (FR-INT-04)."""
+
+    type: Literal["received"]
+    payload: Received
 
 
 class Recounted(_ItemOnly):
@@ -697,6 +734,7 @@ IncomingEvent = Annotated[
     | CheckedIn
     | HandedOut
     | HoldEnded
+    | ReceivedEvent
     | Recounted
     | PoolMissingEvent
     | PoolFoundEvent
@@ -730,6 +768,7 @@ EVENT_TYPES = frozenset(
         "checked_in",
         "handed_out",
         "hold_ended",
+        "received",
         "recounted",
         "pool_missing",
         "pool_found",
