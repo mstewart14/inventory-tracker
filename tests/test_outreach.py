@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from gear_tracker import accounts, assistant, events, notify, sync, views
+from gear_tracker import accounts, assistant, derived, events, holds, notify, sync, views
 from gear_tracker.app import create_app
 from gear_tracker.db import open_db
 from gear_tracker.errors import Forbidden
@@ -159,6 +159,9 @@ OPEN_TO_OUTREACH = {
     ("POST", "/me/deactivate"),
     ("GET", "/outreach/items"),
     ("GET", "/outreach/photos/{photo_id}"),
+    ("GET", "/outreach/holds"),
+    ("POST", "/outreach/holds"),
+    ("POST", "/outreach/holds/{hold_id}/expiry"),
 }
 """Every route an Outreach account may call. Adding to this list is a decision, not a fix for a failing test."""
 
@@ -256,3 +259,195 @@ def test_a_move_into_or_out_of_outreach_signs_the_person_out(db, admin):
     accounts.set_role(db, admin, user_id, "outreach")
     assert sessions(db, user_id) == 0
     assert accounts.get_user(db, user_id)["role"] == "outreach"
+
+
+# --- requests (FR-HLD-05 to 07, 21, 22) ------------------------------------------------------
+
+ADMIN = "01ARZ3NDEKTSV4RRFFQ69G5FAC"
+AS_ADMIN = Principal(user_id=ADMIN, device_id="assistant-9", role="admin")
+
+
+def ask(client, item_id: str, count: int = 1, handle: str = "Mouse", until: int = 5, headers=AS_OMAR):
+    body = {"item_id": item_id, "count": count, "expires_on": day(until), "handle": handle}
+    return client.post("/outreach/holds", json=body, headers=headers)
+
+
+def mine(client) -> list[dict]:
+    return client.get("/outreach/holds", headers=AS_OMAR).json()["holds"]
+
+
+def as_admin(db_path):
+    return assistant.acting_as(AS_ADMIN, db_path)
+
+
+def test_a_request_sets_nothing_aside_until_it_is_approved(client, stock, db_path):
+    got = ask(client, stock["socks"], count=8)
+    assert got.status_code == 200
+    (hold_id,) = got.json()["hold_ids"]
+    assert mine(client) == [
+        {
+            "id": hold_id,
+            "item": "Socks",
+            "count": 8,
+            "expires_on": day(5),
+            "state": "waiting",
+            "for": "Mouse",
+            "requested_at": mine(client)[0]["requested_at"],
+        }
+    ]
+    # Still all twenty to ask for, by anyone (FR-HLD-05).
+    assert shown(client)["Socks"]["available"] == 20
+    assert assistant.list_holds()["holds"][0]["state"] == "waiting"
+
+    with as_admin(db_path):
+        assert assistant.approve_hold(hold_id)["state"] == "live"
+    assert mine(client)[0]["state"] == "approved"
+    assert shown(client)["Socks"]["available"] == 12
+
+
+def test_a_declined_request_says_so_and_forgets_who_it_was_for(client, stock, db_path, db):
+    (hold_id,) = ask(client, stock["coat"]).json()["hold_ids"]
+    assert holds.handles(db) == {hold_id: "Mouse"}
+    with as_admin(db_path):
+        assert assistant.decline_hold(hold_id) == {"hold_id": hold_id, "state": "declined"}
+    assert mine(client)[0]["state"] == "declined" and mine(client)[0]["for"] is None
+    assert holds.handles(db) == {}
+    assert shown(client)["Winter coat"]["available"] == 1
+    with as_admin(db_path), pytest.raises(Exception, match="not a request waiting"):
+        assistant.approve_hold(hold_id)
+
+
+def test_only_an_administrator_answers_a_request(client, stock):
+    (hold_id,) = ask(client, stock["coat"]).json()["hold_ids"]
+    # Alice is Staff: the tool refuses her, and so does a push from her device.
+    with pytest.raises(Exception, match="Administrators only"):
+        assistant.approve_hold(hold_id)
+    with pytest.raises(Exception, match="Administrators only"):
+        assistant.decline_hold(hold_id)
+    for kind, payload in (("hold_approved", {}), ("hold_ended", {"reason": "declined"})):
+        event = {
+            "id": new_ulid(),
+            "entity_type": "hold",
+            "entity_id": hold_id,
+            "type": kind,
+            "actor_id": ALICE,
+            "device_id": "phone",
+            "device_seq": 1,
+            "occurred_at": now_ms(),
+            "clock_offset": 0,
+            "payload": payload,
+        }
+        body = {"device_id": "phone", "client_time": now_ms(), "events": [event]}
+        got = client.post("/sync/push", json=body, headers=AS_ALICE).json()
+        assert got["rejected"][0]["reason"] == "only an Administrator approves or declines a request (FR-HLD-06)"
+    assert mine(client)[0]["state"] == "waiting"
+
+
+def test_a_device_cannot_write_a_request(client, stock):
+    event = {
+        "id": new_ulid(),
+        "entity_type": "hold",
+        "entity_id": new_ulid(),
+        "type": "created",
+        "actor_id": ALICE,
+        "device_id": "phone",
+        "device_seq": 1,
+        "occurred_at": now_ms(),
+        "clock_offset": 0,
+        "payload": {"item_id": stock["coat"], "expires_on": day(3), "requested": True},
+    }
+    body = {"device_id": "phone", "client_time": now_ms(), "events": [event]}
+    got = client.post("/sync/push", json=body, headers=AS_ALICE).json()
+    assert "Outreach account" in got["rejected"][0]["reason"]
+
+
+def test_approval_is_refused_when_the_goods_have_gone(client, stock, db_path):
+    (hold_id,) = ask(client, stock["socks"], count=15).json()["hold_ids"]
+    assistant.place_hold(stock["socks"], "Bird", day(3), count=10)
+    with as_admin(db_path), pytest.raises(Exception, match="only 10 free"):
+        assistant.approve_hold(hold_id)
+
+
+def test_only_what_outreach_is_shown_can_be_asked_for_and_no_more_than_is_free(client, stock):
+    assert ask(client, stock["radio"]).status_code == 404
+    assert ask(client, new_ulid()).status_code == 404
+    assert ask(client, stock["socks"], count=21).json()["message"] == "only 20 available"
+    assert ask(client, stock["coat"], count=2).status_code == 409
+    assert ask(client, stock["coat"], until=0).status_code == 400
+    assert ask(client, stock["coat"], handle="   ").status_code == 400
+    assert mine(client) == []
+
+
+def test_things_tracked_one_by_one_are_asked_for_one_request_each(client, stock):
+    tents = assistant.create_item("Dome tent", generic=True, units=3, visibility="outreach")
+    got = ask(client, tents["item_id"], count=2).json()
+    assert len(got["hold_ids"]) == 2
+    assert sorted(h["item"] for h in mine(client)) == ["Dome tent #1", "Dome tent #2"]
+    held = {h["item_id"] for h in assistant.list_holds()["holds"]}
+    assert held <= set(tents["unit_ids"]) and len(held) == 2
+
+
+def test_staff_and_administrators_do_not_ask_this_way(client, stock):
+    assert ask(client, stock["coat"], headers=AS_ALICE).status_code == 403
+    assert client.get("/outreach/holds", headers=AS_ALICE).status_code == 403
+
+
+def test_outreach_sees_no_hold_but_their_own(client, stock):
+    assistant.place_hold(stock["socks"], "Bird", day(3), count=2)
+    other = {**AS_OMAR, "X-Test-User": "01ARZ3NDEKTSV4RRFFQ69G5FAD"}
+    (theirs,) = ask(client, stock["coat"], handle="Wren", headers=other).json()["hold_ids"]
+    assert mine(client) == []
+    got = client.post(f"/outreach/holds/{theirs}/expiry", json={"expires_on": day(9)}, headers=AS_OMAR)
+    assert got.status_code == 404
+    assert "Bird" not in client.get("/outreach/holds", headers=AS_OMAR).text
+
+
+def test_outreach_moves_their_own_date_with_no_new_approval(client, stock, db_path, db):
+    (hold_id,) = ask(client, stock["coat"]).json()["hold_ids"]
+    with as_admin(db_path):
+        assistant.approve_hold(hold_id)
+    got = client.post(f"/outreach/holds/{hold_id}/expiry", json={"expires_on": day(9)}, headers=AS_OMAR)
+    assert got.status_code == 200
+    assert got.json()["holds"][0]["expires_on"] == day(9) and got.json()["holds"][0]["state"] == "approved"
+    assert (
+        client.post(f"/outreach/holds/{hold_id}/expiry", json={"expires_on": day(0)}, headers=AS_OMAR).status_code
+        == 400
+    )
+
+
+def test_an_unanswered_request_expires_with_its_day(client, stock, db):
+    (hold_id,) = ask(client, stock["coat"], until=1).json()["hold_ids"]
+    later = now_ms() + 3 * DAY_MS
+    assert holds.expire_due(db, later) == [hold_id]
+    assert (derived.get_entity(db, "hold", hold_id) or {})["state"] == "expired"
+    assert holds.handles(db) == {}
+
+
+def test_requests_are_capped_per_account(client, stock, monkeypatch):
+    from gear_tracker import outreach
+
+    monkeypatch.setattr(outreach, "MAX_WAITING", 2)
+    assert ask(client, stock["socks"]).status_code == 200
+    assert ask(client, stock["socks"]).status_code == 200
+    assert ask(client, stock["socks"]).status_code == 409
+
+
+def test_administrators_hear_of_a_request_and_the_worker_hears_the_answer(client, stock, db_path, db, monkeypatch):
+    sent: list[tuple[list[str], str]] = []
+    monkeypatch.setattr(notify, "_send_to", lambda _settings, to, _about, subject, _body: sent.append((to, subject)))
+    monkeypatch.setattr(notify.mail, "get", lambda _conn: {"host": "smtp.example.org"})
+    events.append_server(db, ADMIN, "user", ADMIN, "created", {"name": "Ada", "role": "admin", "active": True})
+    for user, email in ((ADMIN, "ada@example.org"), (OMAR, "omar@example.org"), (ALICE, "alice@example.org")):
+        db.execute("INSERT INTO accounts (user_id, email, created_at) VALUES (?, ?, 0)", (user, email))
+
+    (hold_id,) = ask(client, stock["coat"]).json()["hold_ids"]
+    assert sent[-1][0] == ["ada@example.org"] and sent[-1][1].endswith("hold requested")
+
+    with as_admin(db_path):
+        assistant.approve_hold(hold_id)
+    assert sent[-1][0] == ["omar@example.org"] and sent[-1][1].endswith("hold request approved")
+
+    # Outreach moves the date: the approver is named on it, and every Administrator hears (FR-HLD-22).
+    client.post(f"/outreach/holds/{hold_id}/expiry", json={"expires_on": day(9)}, headers=AS_OMAR)
+    assert sent[-1][0] == ["ada@example.org"] and sent[-1][1].endswith("hold date moved")
+    assert all("Mouse" not in subject for _to, subject in sent)

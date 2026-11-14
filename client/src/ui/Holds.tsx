@@ -1,19 +1,24 @@
 import { useState } from "react";
 import { DAY_MS } from "../lib/clock";
 import {
+  approveHold,
   available,
+  declineHold,
   extendHold,
+  freeFor,
   handleFor,
   handOutHold,
   type Hold,
   holds,
   holdState,
   isLive,
+  isWaiting,
   liveHolds,
   MAX_HANDLE,
   placeHold,
   putBackHold,
   today,
+  waitingHolds,
 } from "../lib/holds";
 import { isPool, type Item, nameOf, resolveItem } from "../lib/inventory";
 import { navigate } from "../lib/router";
@@ -35,7 +40,12 @@ export function holdLabel(store: Store, h: Hold): string {
   return `${h.count != null ? `${h.count} for` : "For"} ${who} · until ${h.expires_on}`;
 }
 
-const ENDED: Record<string, string> = { put_back: "Put back", handed_out: "Handed out", expired: "Expired" };
+const ENDED: Record<string, string> = {
+  put_back: "Put back",
+  handed_out: "Handed out",
+  expired: "Expired",
+  declined: "Declined",
+};
 
 /**
  * The holds on one item, and the form that places one (FR-HLD-01). It sits with the buttons that
@@ -164,7 +174,13 @@ export function ItemHolds({ store, it, onDone }: { store: Store; it: Item; onDon
             e.preventDefault();
             if (!canPlace) return;
             void run(
-              () => placeHold(store, { item_id: it.id, handle, expires_on: until, ...(pool ? { count: n } : {}) }),
+              () =>
+                placeHold(store, {
+                  item_id: it.id,
+                  handle,
+                  expires_on: until,
+                  ...(pool ? { count: n } : {}),
+                }),
               `On hold${pool ? ` · ${n}` : ""} until ${until} · ${name}`,
             );
           }}
@@ -230,11 +246,14 @@ export function Holds({ store }: { store: Store }) {
   const live = all.filter((h) => isLive(h, day));
   const since = store.now() - SHOWN_ENDED_MS;
   const ended = all
-    .filter((h) => !isLive(h, day) && (h.ended_at ?? Date.parse(`${h.expires_on}T23:59:59`)) >= since)
+    .filter(
+      (h) => !isLive(h, day) && !isWaiting(h, day) && (h.ended_at ?? Date.parse(`${h.expires_on}T23:59:59`)) >= since,
+    )
     .reverse();
   const open = (h: Hold) => navigate(`/items/${resolveItem(store.state, h.item_id)}`);
   return (
     <Page title="Holds" back="/">
+      <Requests store={store} />
       {live.length === 0 ? (
         <p>Nothing is on hold.</p>
       ) : (
@@ -274,5 +293,89 @@ export function Holds({ store }: { store: Store }) {
         </section>
       )}
     </Page>
+  );
+}
+
+/**
+ * Requests from Outreach workers that nobody has answered (FR-HLD-05). Staff see them; only an
+ * Administrator approves or declines (FR-HLD-06). A request sets nothing aside, so one that asks
+ * for more than is free now cannot be approved until goods are freed.
+ */
+function Requests({ store }: { store: Store }) {
+  const day = today(store);
+  const waiting = waitingHolds(store.state, day);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (waiting.length === 0) return null;
+
+  async function run(act: () => Promise<void>) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await act();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not record it");
+    }
+    setBusy(false);
+  }
+
+  return (
+    <section aria-label="Requests waiting for approval">
+      <h2 className="section">Waiting for approval</h2>
+      {!store.admin && <p className="muted small">An Administrator approves or declines these.</p>}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      <ul className="items">
+        {waiting.map((h) => {
+          const name = nameOf(store.state, h.item_id);
+          const free = freeFor(store, h);
+          const short = (h.count ?? 1) > free;
+          return (
+            <li key={h.id} className="request">
+              <button
+                className="item"
+                type="button"
+                onClick={() => navigate(`/items/${resolveItem(store.state, h.item_id)}`)}
+              >
+                <span className="item-name">{name}</span>
+                <span className="muted small">
+                  {holdLabel(store, h)} · requested by {userName(store.state, h.created_by)}
+                </span>
+              </button>
+              {short && (
+                <p className="notice" role="note">
+                  {free === 0 ? "None are free to hold now." : `Only ${free} free to hold now.`}
+                </p>
+              )}
+              {store.admin && (
+                <div className="row">
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={busy || short}
+                    aria-label={`Approve the request for ${name}`}
+                    onClick={() => void run(() => approveHold(store, h.id))}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    aria-label={`Decline the request for ${name}`}
+                    onClick={() => void run(() => declineHold(store, h.id))}
+                  >
+                    Decline
+                  </button>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }

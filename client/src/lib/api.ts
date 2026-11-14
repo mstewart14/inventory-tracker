@@ -225,6 +225,27 @@ export interface OutreachItems {
   items: OutreachItem[];
 }
 
+/** How one of an Outreach worker's own requests stands (FR-HLD-07). */
+export type OutreachHoldState = "waiting" | "approved" | "declined" | "expired" | "handed_out" | "put_back";
+
+export interface OutreachHold {
+  id: string;
+  item: string;
+  count: number;
+  expires_on: string;
+  state: OutreachHoldState;
+  /** Who it is for. Gone once the hold has ended (FR-HLD-17). */
+  for: string | null;
+  requested_at: number | null;
+}
+
+export interface HoldRequest {
+  item_id: string;
+  count: number;
+  expires_on: string;
+  handle: string;
+}
+
 export interface Timed<T> {
   data: T;
   /** Only a server that stamped its own reply gives us one to measure against (see `request`). */
@@ -481,6 +502,13 @@ export function createApi(options: ApiOptions = {}) {
     fetchPhoto: async (id: string): Promise<Blob> => (await raw("GET", `/photos/${id}`)).blob(),
     /** What an Outreach worker may see, made by the server on each call (FR-VIS-02, FR-VIS-03). */
     outreachItems: () => request<OutreachItems>("GET", "/outreach/items"),
+    /** The worker's own requests and holds, and no one else's (FR-HLD-07, FR-VIS-10). */
+    outreachHolds: () => request<{ holds: OutreachHold[] }>("GET", "/outreach/holds"),
+    /** Ask for goods to be held for a client; an Administrator answers (FR-HLD-05). */
+    requestHold: (body: HoldRequest) => request<{ holds: OutreachHold[] }>("POST", "/outreach/holds", body),
+    /** Move the end date of the worker's own request or hold (FR-HLD-21). */
+    moveOutreachHold: (id: string, expires_on: string) =>
+      request<{ holds: OutreachHold[] }>("POST", `/outreach/holds/${id}/expiry`, { expires_on }),
     /** A photo of something Outreach is shown; the server serves them no other (FR-VIS-09). */
     fetchOutreachPhoto: async (id: string): Promise<Blob> => (await raw("GET", `/outreach/photos/${id}`)).blob(),
     /** A PDF of fresh unassigned codes (FR-TAG-02). Administrators only; the sheet is built on the server. */

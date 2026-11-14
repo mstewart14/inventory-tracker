@@ -219,7 +219,8 @@ export function App({ store, api, now = Date.now }: Props) {
 
   // A worker from another organization gets one screen, read from the server, and none of the app
   // around it: no inventory, no scanning, no settings (FR-USR-39).
-  if (store.outreach) return <Outreach api={api} name={store.meta.user?.name ?? ""} onSignOut={() => void signOut()} />;
+  if (store.outreach)
+    return <Outreach api={api} name={store.meta.user?.name ?? ""} onSignOut={() => void signOut()} now={now} />;
 
   const shell: Shell = {
     busy,

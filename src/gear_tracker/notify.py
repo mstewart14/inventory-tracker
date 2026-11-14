@@ -209,6 +209,11 @@ def _addresses(conn: sqlite3.Connection, user_ids: list[str]) -> list[str]:
     return out
 
 
+def accounts_email(conn: sqlite3.Connection, user_id: str | None) -> str | None:
+    row = conn.execute("SELECT email FROM accounts WHERE user_id = ?", (user_id,)).fetchone() if user_id else None
+    return row["email"] if row is not None else None
+
+
 def _hold_lines(state: dict[str, Any], hold: dict[str, Any]) -> list[str]:
     count = f"{hold['count']} x " if hold.get("count") else ""
     return [
@@ -217,12 +222,24 @@ def _hold_lines(state: dict[str, Any], hold: dict[str, Any]) -> list[str]:
     ]
 
 
-def _tell_hold(conn: sqlite3.Connection, hold_id: str, actor_id: str | None, subject: str, first: str) -> None:
+def _tell_hold(
+    conn: sqlite3.Connection,
+    hold_id: str,
+    actor_id: str | None,
+    subject: str,
+    first: str,
+    admins: bool = False,
+    named: bool = True,
+) -> None:
+    """Mail the people named on a hold, and every Administrator too when `admins`. Never whoever did it."""
     settings = mail.get(conn)
     hold = derived.get_entity(conn, "hold", hold_id)
     if settings is None or hold is None:
         return
-    to = _addresses(conn, [u for u in named_on(hold) if u != actor_id])
+    to = _addresses(conn, [u for u in named_on(hold) if u != actor_id]) if named else []
+    if admins:
+        own = accounts_email(conn, actor_id)
+        to = list(dict.fromkeys([*to, *(a for a in _admins(conn) if a != own)]))
     if not to:
         return
     state = derived.snapshot(conn)
@@ -235,6 +252,7 @@ def _tell_hold(conn: sqlite3.Connection, hold_id: str, actor_id: str | None, sub
 
 
 HOLD_ENDINGS = {
+    "declined": ("hold request declined", "A request for a hold was declined. Nothing was set aside."),
     "expired": ("hold expired", "A hold ran out. The goods are back in general stock."),
     "put_back": ("hold put back", "A hold was put back. The goods are back in general stock."),
 }
@@ -245,12 +263,38 @@ def hold_ended(conn: sqlite3.Connection, hold_id: str, reason: str, actor_id: st
     and is not news."""
     if reason in HOLD_ENDINGS:
         subject, first = HOLD_ENDINGS[reason]
+        hold = derived.get_entity(conn, "hold", hold_id) or {}
+        if reason == "expired" and hold.get("requested") and not hold.get("approved_by"):
+            subject, first = "hold request expired", "A request for a hold ran out before it was answered."
         _tell_hold(conn, hold_id, actor_id, subject, first)
 
 
 def hold_moved(conn: sqlite3.Connection, hold_id: str, old: Any, new: Any, actor_id: str) -> None:
-    """A hold's end date moved (FR-HLD-27)."""
-    _tell_hold(conn, hold_id, actor_id, "hold date moved", f"A hold now runs until {new}. It was {old}.")
+    """A hold's end date moved (FR-HLD-27). When Outreach moved it, every Administrator hears (FR-HLD-22)."""
+    actor = derived.get_entity(conn, "user", actor_id) or {}
+    _tell_hold(
+        conn,
+        hold_id,
+        actor_id,
+        "hold date moved",
+        f"A hold now runs until {new}. It was {old}.",
+        admins=actor.get("role") == "outreach",
+    )
+
+
+def hold_requested(conn: sqlite3.Connection, hold_id: str) -> None:
+    """Outreach asked for a hold (FR-HLD-05). Every Administrator is told, since one of them must answer
+    (FR-HLD-39)."""
+    hold = derived.get_entity(conn, "hold", hold_id) or {}
+    first = f"A hold was requested, until {hold.get('expires_on')}. Nothing is set aside until it is approved."
+    _tell_hold(conn, hold_id, str(hold.get("created_by")), "hold requested", first, admins=True, named=False)
+
+
+def hold_approved(conn: sqlite3.Connection, hold_id: str, actor_id: str) -> None:
+    """A request was approved, and the goods are now set aside (FR-HLD-40)."""
+    hold = derived.get_entity(conn, "hold", hold_id) or {}
+    first = f"A request for a hold was approved. The goods are set aside until {hold.get('expires_on')}."
+    _tell_hold(conn, hold_id, actor_id, "hold request approved", first)
 
 
 LOCK_MAIL_EVERY_MS = 3_600_000

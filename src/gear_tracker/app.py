@@ -42,6 +42,7 @@ from gear_tracker import (
     labels,
     mail,
     notify,
+    outreach,
     privacy,
     sync,
     views,
@@ -888,6 +889,23 @@ def create_app(
                 "items": views.outreach_items(state, views.today(now)),
             }
         )
+
+    @app.get("/outreach/holds")
+    def outreach_holds(conn: Db, who: Anyone) -> dict[str, Any]:
+        """The worker's own requests and holds, and how each stands (FR-HLD-07). No one else's (FR-VIS-10)."""
+        return stamped({"holds": outreach.my_holds(conn, who)})
+
+    @app.post("/outreach/holds")
+    def request_hold(conn: Db, who: Anyone, body: outreach.Request) -> dict[str, Any]:
+        """Ask for goods to be held for a client (FR-HLD-05). An Administrator answers (FR-HLD-06)."""
+        made = outreach.request_hold(conn, who, body)
+        return stamped({"hold_ids": made, "holds": outreach.my_holds(conn, who)})
+
+    @app.post("/outreach/holds/{hold_id}/expiry")
+    def move_hold(conn: Db, who: Anyone, hold_id: str, body: outreach.Move) -> dict[str, Any]:
+        """Move the end date of the worker's own request or hold (FR-HLD-21)."""
+        outreach.move_expiry(conn, who, hold_id, body)
+        return stamped({"holds": outreach.my_holds(conn, who)})
 
     @app.get("/outreach/photos/{photo_id}")
     def outreach_photo(conn: Db, who: Anyone, photo_id: str) -> FileResponse:

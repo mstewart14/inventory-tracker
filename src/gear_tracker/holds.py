@@ -51,7 +51,8 @@ def set_handle(conn: sqlite3.Connection, hold_id: str, handle: Any, user_id: str
     """Record who a live hold is for. Nothing is kept for a hold that is unknown or has ended (FR-HLD-17)."""
     tidy = tidy_handle(handle)
     hold = derived.get_entity(conn, "hold", hold_id)
-    if tidy is None or hold is None or not views.is_live(hold, views.today(now)):
+    today = views.today(now)
+    if tidy is None or hold is None or not (views.is_live(hold, today) or views.is_waiting(hold, today)):
         return False
     conn.execute(
         "INSERT INTO hold_handles (hold_id, handle, set_by, set_at) VALUES (?, ?, ?, ?)"
@@ -67,12 +68,20 @@ def drop_handle(conn: sqlite3.Connection, hold_id: str) -> None:
 
 
 def after(conn: sqlite3.Connection, event: events.Event) -> None:
-    """What follows a hold's event once it is stored. An ending, by a device or by its date, tells the
+    """What follows a hold's event once it is stored. A request tells every Administrator (FR-HLD-39),
+    and its approval tells whoever asked (FR-HLD-40). An ending, by a device or by its date, tells the
     people named on the hold and then forgets who it was for (FR-HLD-12, FR-HLD-28, FR-HLD-17). A moved
     expiry tells them too (FR-HLD-27)."""
     if event.entity_type != "hold":
         return
-    if event.type == "hold_ended":
+    if event.type == "created" and event.payload.get("requested"):
+        notify.hold_requested(conn, event.entity_id)
+    elif event.type == "hold_approved":
+        hold = derived.get_entity(conn, "hold", event.entity_id) or {}
+        # Only the approval that stood is news.
+        if hold.get("approved_at") == event.effective_at and hold.get("approved_by") == event.actor_id:
+            notify.hold_approved(conn, event.entity_id, event.actor_id)
+    elif event.type == "hold_ended":
         hold = derived.get_entity(conn, "hold", event.entity_id) or {}
         # Only the ending that stood is news; a second one changed nothing.
         if hold.get("ended_at") == event.effective_at and hold.get("ended_by") == event.actor_id:
@@ -90,7 +99,7 @@ def expire_due(conn: sqlite3.Connection, now: int | None = None) -> list[str]:
         row["entity_id"]
         for row in conn.execute(
             "SELECT entity_id FROM entities WHERE entity_type = 'hold'"
-            " AND coalesce(json_extract(state, '$.state'), 'live') = 'live'"
+            " AND coalesce(json_extract(state, '$.state'), 'live') IN ('live', 'waiting')"
             " AND json_extract(state, '$.expires_on') < ?",
             (today,),
         )
@@ -101,7 +110,7 @@ def expire_due(conn: sqlite3.Connection, now: int | None = None) -> list[str]:
     # A handle whose hold never arrived, or ended some other way, is not kept either.
     conn.execute(
         "DELETE FROM hold_handles WHERE hold_id NOT IN (SELECT entity_id FROM entities WHERE entity_type = 'hold'"
-        " AND coalesce(json_extract(state, '$.state'), 'live') = 'live') AND set_at < ?",
+        " AND coalesce(json_extract(state, '$.state'), 'live') IN ('live', 'waiting')) AND set_at < ?",
         (now - 24 * 3_600_000,),
     )
     return due

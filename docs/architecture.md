@@ -668,6 +668,28 @@ on the device and by the assistant. The server does not refuse it at push, becau
 the goods are free, and a refused hand-out would deny something that already happened. Handing a hold out is two events
 in one push: `handed_out` on the item, naming the `hold_id`, and `hold_ended` on the hold.
 
+### Requests from Outreach
+
+An Outreach worker asks for a hold; an Administrator answers (FR-HLD-05, FR-HLD-06). A request is the same `hold`
+entity, `created` with `requested: true`. Its `state` is `waiting`, and since only `live` holds count, it sets nothing
+aside. `hold_approved` makes it `live` and records `approved_by`; `hold_ended` with reason `declined` ends it. Of the
+two, the first in replay order stands: an approval of a declined request does nothing, and a decline does nothing to a
+hold already approved. A request nobody answers is swept as `expired` on its day like any hold.
+
+Outreach has no device on the log, so the request does not arrive by sync. `outreach.py` takes it over HTTP
+(`POST /outreach/holds`), checks it against `views.outreach_items` (an item the worker is shown, and no more than are
+free), and appends the event itself with the worker as actor. A pushed `created` with `requested` is refused, so Staff
+cannot make one by mistake. The handle goes in `hold_handles` as always. A generic with units is not held itself, so a
+request for three of one becomes three requests, one per unit the server picks.
+
+Approval and decline are ordinary events from an Administrator's device, so they work offline; `sync.py` refuses them
+from anyone else. Approval is refused on the device and by the assistant when fewer goods are free than were asked for
+(FR-HLD-43). As with a hand-out, the server does not refuse it at push.
+
+The worker reads their own holds from `GET /outreach/holds`, never anyone else's (FR-VIS-10), and moves a date with
+`POST /outreach/holds/{id}/expiry` (FR-HLD-21). `notify.py` mails every Administrator when a request arrives or when
+Outreach moves a date, and mails the worker the answer.
+
 ## Repairs
 
 A ticket is a `repair` entity: `created` with the item it is against and a description (FR-REP-01), by anyone signed in

@@ -372,10 +372,10 @@ class ReservationDetails(Payload):
         return self
 
 
-HOLD_ENDINGS = ("put_back", "handed_out", "expired")
-"""How a hold ends (FR-HLD-10, FR-HLD-16, FR-HLD-11)."""
+HOLD_ENDINGS = ("put_back", "handed_out", "expired", "declined")
+"""How a hold ends (FR-HLD-10, FR-HLD-16, FR-HLD-11), or how a request for one does (FR-HLD-06)."""
 
-HoldEnding = Literal["put_back", "handed_out", "expired"]
+HoldEnding = Literal["put_back", "handed_out", "expired", "declined"]
 
 
 class HoldDetails(Payload):
@@ -385,6 +385,8 @@ class HoldDetails(Payload):
     item_id: NonEmpty
     count: Annotated[int, Field(ge=1)] | None = None
     expires_on: IsoDate
+    requested: Literal[True] | None = None
+    """An Outreach request (FR-HLD-05): it sets nothing aside until an Administrator approves it."""
 
     @model_validator(mode="after")
     def _no_client(self):
@@ -395,6 +397,10 @@ class HoldDetails(Payload):
 
 class HoldEnd(Payload):
     reason: HoldEnding
+
+
+class HoldApproval(Payload):
+    """Nothing to say: who approved and when are the event's own actor and time (FR-HLD-06)."""
 
 
 class FoundReport(Payload):
@@ -607,6 +613,17 @@ class CheckedIn(_ItemOnly):
     payload: CheckIn
 
 
+class HoldApproved(_Incoming):
+    type: Literal["hold_approved"]
+    payload: HoldApproval
+
+    @model_validator(mode="after")
+    def _holds_only(self):
+        if self.entity_type != "hold":
+            raise ValueError("hold_approved applies only to holds")
+        return self
+
+
 class HoldEnded(_Incoming):
     type: Literal["hold_ended"]
     payload: HoldEnd
@@ -734,6 +751,7 @@ IncomingEvent = Annotated[
     | CheckedIn
     | HandedOut
     | HoldEnded
+    | HoldApproved
     | ReceivedEvent
     | Recounted
     | PoolMissingEvent
@@ -768,6 +786,7 @@ EVENT_TYPES = frozenset(
         "checked_in",
         "handed_out",
         "hold_ended",
+        "hold_approved",
         "received",
         "recounted",
         "pool_missing",

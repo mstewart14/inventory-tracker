@@ -2099,14 +2099,24 @@ def _hold(state: dict[str, Any], hold_id: str) -> dict[str, Any]:
 
 def _live_hold(state: dict[str, Any], hold_id: str) -> dict[str, Any]:
     hold = _hold(state, hold_id)
-    if not views.is_live(hold, views.today(now_ms())):
+    today = views.today(now_ms())
+    if views.is_waiting(hold, today):
+        raise Conflict("this is a request an Administrator has not approved yet; see approve_hold")
+    if not views.is_live(hold, today):
         raise Conflict("this hold has ended")
     return hold
 
 
+def _waiting_hold(state: dict[str, Any], hold_id: str) -> dict[str, Any]:
+    hold = _hold(state, hold_id)
+    if not views.is_waiting(hold, views.today(now_ms())):
+        raise Conflict("this is not a request waiting for an answer")
+    return hold
+
+
 def _hold_brief(state: dict[str, Any], hold: dict[str, Any], handles: dict[str, str], today: str) -> dict[str, Any]:
-    live = views.is_live(hold, today)
-    state_now = "live" if live else ("expired" if hold.get("state", "live") == "live" else hold["state"])
+    state_now = views.hold_state(hold, today)
+    live = state_now in ("live", "waiting")
     out = {
         "hold_id": hold["id"],
         "item_id": views.resolve_item(state, str(hold.get("item_id"))),
@@ -2117,6 +2127,10 @@ def _hold_brief(state: dict[str, Any], hold: dict[str, Any], handles: dict[str, 
     }
     if hold.get("count"):
         out["count"] = hold["count"]
+    if hold.get("requested"):
+        out["requested_by"] = out.pop("placed_by")
+    if hold.get("approved_by"):
+        out["approved_by"] = views.user_name(state, hold["approved_by"])
     if live and hold["id"] in handles:
         out["for"] = handles[hold["id"]]
     return out
@@ -2143,7 +2157,10 @@ def outreach_view() -> dict[str, Any]:
 def list_holds(item_id: str | None = None, include_ended: StrictBool = False) -> dict[str, Any]:
     """Goods set aside for clients, soonest to run out first (FR-HLD-01). `for` is the client's handle, and
     is gone once a hold ends (FR-HLD-17). `item_id` narrows to one item; `include_ended` adds holds that
-    were handed out, put back, or expired."""
+    were handed out, put back, declined, or expired.
+
+    A `state` of `waiting` is a request from an Outreach worker (FR-HLD-05): it sets nothing aside until an
+    Administrator answers it with `approve_hold` or `decline_hold`."""
     with _open() as (conn, _who):
         state = _state(conn)
         today = views.today(now_ms())
@@ -2151,7 +2168,7 @@ def list_holds(item_id: str | None = None, include_ended: StrictBool = False) ->
         found = [
             h
             for h in views.holds(state)
-            if (include_ended or views.is_live(h, today))
+            if (include_ended or views.is_live(h, today) or views.is_waiting(h, today))
             and (target is None or views.resolve_item(state, str(h.get("item_id"))) == target)
         ]
         handles = holds.handles(conn)
@@ -2233,6 +2250,33 @@ def hand_out_hold(hold_id: str) -> dict[str, Any]:
             ],
         )
         return {"hold_id": hold["id"], "state": "handed_out", "item_id": it["id"]}
+
+
+def approve_hold(hold_id: str) -> dict[str, Any]:
+    """Approve an Outreach worker's request (FR-HLD-06): the goods are set aside from now until the request's
+    day, and the worker is told. Administrators only. Refused when fewer are free than were asked for
+    (FR-HLD-08); decline it, or free some goods first."""
+    with _open() as (conn, who):
+        accounts._require_admin(who)
+        state = _state(conn)
+        hold = _waiting_hold(state, hold_id)
+        today = views.today(now_ms())
+        it = _item(state, str(hold.get("item_id")))
+        free = views.available(state, it, today)
+        if (hold.get("count") or 1) > free:
+            raise Conflict(f"only {free} free to hold" if views.is_pool(it) else "this is not free to hold")
+        _push(conn, who, [_draft("hold", hold["id"], "hold_approved", {})])
+        return _hold_brief(_state(conn), _hold(_state(conn), hold_id), holds.handles(conn), today)
+
+
+def decline_hold(hold_id: str) -> dict[str, Any]:
+    """Decline an Outreach worker's request (FR-HLD-06). Nothing was set aside, the worker is told, and who
+    it was for is forgotten (FR-HLD-17). Administrators only."""
+    with _open() as (conn, who):
+        accounts._require_admin(who)
+        hold = _waiting_hold(_state(conn), hold_id)
+        _push(conn, who, [_draft("hold", hold["id"], "hold_ended", {"reason": "declined"})])
+        return {"hold_id": hold["id"], "state": "declined"}
 
 
 def receive(item_id: str, count: Count, source: Source | None = None) -> dict[str, Any]:
@@ -3262,6 +3306,8 @@ TOOLS = [
     extend_hold,
     put_back_hold,
     hand_out_hold,
+    approve_hold,
+    decline_hold,
     weigh,
     refilled,
     recount,

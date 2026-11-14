@@ -110,6 +110,11 @@ export type State = Record<string, Record<string, Fields>>;
 // holds.ts), from the live holds whose `expires_on` has not passed, so an expired hold frees its
 // goods on a device with no signal (FR-HLD-11). Handing held goods out is a `handed_out` on the
 // item, naming the `hold_id`, beside the hold's own `hold_ended`.
+//
+// A request from Outreach is a hold `created` with `requested: true` (FR-HLD-05). Its `state` is
+// "waiting" and it sets nothing aside. `hold_approved {}` makes a waiting hold "live", with
+// `approved_by` and `approved_at`; on any other hold it does nothing, so the first of an approval
+// and a decline in replay order stands. `hold_ended {reason: "declined"}` ends a waiting one, and does nothing to a live one.
 
 export interface ReplayEvent {
   id: string;
@@ -310,6 +315,7 @@ export const KNOWN_EVENT_TYPES: ReadonlySet<string> = new Set([
   "checked_in",
   "handed_out",
   "hold_ended",
+  "hold_approved",
   "received",
   "recounted",
   "pool_missing",
@@ -374,12 +380,21 @@ export function apply(entity: Fields, event: ReplayEvent): void {
       }
       if (event.entity_type === "hold") {
         entity.created_by = event.actor_id;
-        if (!("state" in entity)) entity.state = "live";
+        // A request sets nothing aside until it is approved (FR-HLD-05).
+        entity.state = p.requested ? "waiting" : "live";
+      }
+      break;
+    case "hold_approved":
+      if (entity.state === "waiting") {
+        entity.state = "live";
+        entity.approved_by = event.actor_id;
+        entity.approved_at = event.effective_at;
       }
       break;
     case "hold_ended":
-      // The first ending stands (FR-HLD-10, FR-HLD-11, FR-HLD-16).
-      if ((entity.state ?? "live") === "live") {
+      // The first ending stands (FR-HLD-10, FR-HLD-11, FR-HLD-16), of a hold or of a request.
+      // A decline answers a request; it does not end a hold that was approved first.
+      if (entity.state === "waiting" || (p.reason !== "declined" && (entity.state ?? "live") === "live")) {
         entity.state = p.reason;
         entity.ended_at = event.effective_at;
         entity.ended_by = event.actor_id;
@@ -498,7 +513,12 @@ export function apply(entity: Fields, event: ReplayEvent): void {
       break;
     }
     case "note_added": {
-      const note: Note = { id: event.id, text: p.text as string, actor_id: event.actor_id, at: event.effective_at };
+      const note: Note = {
+        id: event.id,
+        text: p.text as string,
+        actor_id: event.actor_id,
+        at: event.effective_at,
+      };
       if (p.movement_id != null) note.movement_id = p.movement_id as string;
       notes(entity).push(note);
       break;
@@ -524,7 +544,9 @@ export function apply(entity: Fields, event: ReplayEvent): void {
         entity.pool_out = poolOut;
         entity.pool_in = Math.max(0, ((entity.pool_in as number | undefined) ?? 0) - count);
         if (p.reservation_id != null) {
-          const poolReservations = { ...((entity.pool_reservations ?? {}) as PoolReservations) };
+          const poolReservations = {
+            ...((entity.pool_reservations ?? {}) as PoolReservations),
+          };
           const reservationId = p.reservation_id as string;
           poolReservations[reservationId] = (poolReservations[reservationId] ?? 0) + count;
           entity.pool_reservations = poolReservations;
@@ -694,7 +716,9 @@ function correctLot(entity: Fields, p: Fields): void {
     const lot = list.find((l) => l.id === p.movement_id);
     if (!lot) continue;
     if (lot.reservation_id !== next) {
-      const totals = { ...((entity.pool_reservations ?? {}) as PoolReservations) };
+      const totals = {
+        ...((entity.pool_reservations ?? {}) as PoolReservations),
+      };
       if (lot.reservation_id !== null) {
         const left = (totals[lot.reservation_id] ?? 0) - lot.count;
         if (left > 0) totals[lot.reservation_id] = left;
@@ -703,8 +727,15 @@ function correctLot(entity: Fields, p: Fields): void {
       if (next !== null) totals[next] = (totals[next] ?? 0) + lot.count;
       entity.pool_reservations = totals;
     }
-    const fixed = { ...lot, event: (p.event as string | null | undefined) ?? null, reservation_id: next };
-    entity.pool_lots = { ...lots, [holderId]: list.map((l) => (l === lot ? fixed : l)) };
+    const fixed = {
+      ...lot,
+      event: (p.event as string | null | undefined) ?? null,
+      reservation_id: next,
+    };
+    entity.pool_lots = {
+      ...lots,
+      [holderId]: list.map((l) => (l === lot ? fixed : l)),
+    };
     return;
   }
 }

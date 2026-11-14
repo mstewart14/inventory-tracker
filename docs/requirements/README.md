@@ -13,11 +13,12 @@ gear is lent and comes back. Donations leave for good.
 
 The functional requirements, non-functional requirements and stories still describe the Scout version, apart from roles
 (FR-USR-36 on), holds (section 12), visibility (section 13), handing out (section 14) and intake (section 15), which are
-written for the society. Handing out and intake are built. Holds are built for Staff and Administrators: Outreach
-requests, approval and delivery are not (FR-HLD-05 to 07, 14, 15, 21 to 25). The public catalogue is built (FR-VIS-04 to
+written for the society. Handing out and intake are built. Holds are built. The public catalogue is built (FR-VIS-04 to
 07, 15 to 23). The three roles are built (FR-USR-36 to 46): an Outreach account signs in and sees the items marked for
-it, with places and counts (FR-VIS-02, 03, 09 to 12, 24 to 26). It cannot ask for a hold yet. Until a section is
-rewritten, read it as what the code does today, not what the society needs.
+it, with places and counts (FR-VIS-02, 03, 09 to 12, 24 to 26). It asks for a hold there, an Administrator approves or
+declines it on the Holds screen, and the worker can move its date (FR-HLD-05 to 07, 21, 22, 39 to 50). Booking
+collection and delivery are not built (FR-HLD-14, 15, 24, 25). Until a section is rewritten, read it as what the code
+does today, not what the society needs.
 
 ## Documents
 
@@ -114,6 +115,8 @@ deliveries is wanted later.
 - Does the public catalogue show how many are available? No for now (FR-VIS-05).
 - Should the public catalogue list an item when none is free to give? No for now (FR-VIS-15).
 - Does Outreach still see an item when none is available (FR-VIS-12)? Assumed: no.
+- Should one request cover several things tracked one by one? For now each thing is its own request (FR-HLD-45).
+- Can Outreach withdraw a request they no longer need? Not yet; it runs out on its day.
 - Is a delivery taken by one named Staff member (FR-HLD-25)? Assumed, so that there is someone to tell.
 - May a source name a person who donated? It is written to the permanent log, so it could not be erased later.
 - How many people hold each role?

@@ -118,6 +118,12 @@ State = dict[str, dict[str, dict[str, Any]]]
 # the live holds whose `expires_on` has not passed, so an expired hold frees its goods on a device
 # with no signal (FR-HLD-11). Handing held goods out is a `handed_out` on the item, naming the
 # `hold_id`, beside the hold's own `hold_ended`.
+#
+# A request from Outreach is a hold `created` with `requested: true` (FR-HLD-05). Its `state` is
+# "waiting" and it sets nothing aside. `hold_approved {}` makes a waiting hold "live", with
+# `approved_by` and `approved_at`; on any other hold it does nothing, so the first of an approval
+# and a decline in replay order stands. `hold_ended {reason: "declined"}` ends a waiting one,
+# and does nothing to a live one.
 
 # Set by replay, never by a device. A created or field_changed that names one is rejected.
 DERIVED_FIELDS = frozenset(
@@ -130,6 +136,8 @@ DERIVED_FIELDS = frozenset(
         "conflicts",
         "added_at",
         "modified_at",
+        "approved_by",
+        "approved_at",
         "item_id",
         "bound_at",
         "photos",
@@ -319,10 +327,18 @@ def apply(entity: dict[str, Any], event: Event) -> None:
                 entity["created_by"] = event.actor_id
             if event.entity_type == "hold":
                 entity["created_by"] = event.actor_id
-                entity.setdefault("state", "live")
+                # A request sets nothing aside until it is approved (FR-HLD-05).
+                entity["state"] = "waiting" if p.get("requested") else "live"
+        case "hold_approved":
+            if entity.get("state") == "waiting":
+                entity["state"] = "live"
+                entity["approved_by"] = event.actor_id
+                entity["approved_at"] = event.effective_at
         case "hold_ended":
-            # The first ending stands (FR-HLD-10, FR-HLD-11, FR-HLD-16).
-            if entity.get("state", "live") == "live":
+            # The first ending stands (FR-HLD-10, FR-HLD-11, FR-HLD-16), of a hold or of a request.
+            # A decline answers a request; it does not end a hold that was approved first.
+            open_states = ("waiting",) if p["reason"] == "declined" else ("live", "waiting")
+            if entity.get("state", "live") in open_states:
                 entity["state"] = p["reason"]
                 entity["ended_at"] = event.effective_at
                 entity["ended_by"] = event.actor_id

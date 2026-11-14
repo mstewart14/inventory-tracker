@@ -1,0 +1,59 @@
+{
+  "name": "a request waits, and the first answer in replay order stands: approved, then a late decline does nothing",
+  "events": [
+    {
+      "id": "01000000000000000000000001",
+      "entity_type": "hold",
+      "entity_id": "h1",
+      "type": "created",
+      "actor_id": "omar",
+      "device_id": "server",
+      "device_seq": 1,
+      "effective_at": 1000,
+      "payload": {
+        "item_id": "coat-1",
+        "expires_on": "2026-12-01",
+        "requested": true
+      }
+    },
+    {
+      "id": "01000000000000000000000003",
+      "entity_type": "hold",
+      "entity_id": "h1",
+      "type": "hold_ended",
+      "actor_id": "bea",
+      "device_id": "b",
+      "device_seq": 3,
+      "effective_at": 3000,
+      "payload": {
+        "reason": "declined"
+      }
+    },
+    {
+      "id": "01000000000000000000000002",
+      "entity_type": "hold",
+      "entity_id": "h1",
+      "type": "hold_approved",
+      "actor_id": "ada",
+      "device_id": "a",
+      "device_seq": 2,
+      "effective_at": 2000,
+      "payload": {}
+    }
+  ],
+  "state": {
+    "hold": {
+      "h1": {
+        "item_id": "coat-1",
+        "expires_on": "2026-12-01",
+        "requested": true,
+        "created_by": "omar",
+        "added_at": 1000,
+        "modified_at": 1000,
+        "state": "live",
+        "approved_by": "ada",
+        "approved_at": 2000
+      }
+    }
+  }
+}

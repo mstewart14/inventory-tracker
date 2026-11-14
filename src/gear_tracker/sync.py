@@ -315,11 +315,18 @@ def _check_entity_rules(conn: sqlite3.Connection, principal: Principal, incoming
                 raise Rejected("a pool is held by count (FR-HLD-01)")
             if not is_pool and payload.get("count") is not None:
                 raise Rejected("count is only for a pool (FR-HLD-01)")
+            if payload.get("requested"):
+                # Staff place a hold outright (FR-HLD-04). A request is Outreach's, and Outreach has no device
+                # on the log: the server writes it (outreach.request_hold).
+                raise Rejected("a request for a hold is made by an Outreach account (FR-HLD-05)")
         else:
             if derived.get_entity(conn, "hold", str(incoming.get("entity_id"))) is None:
                 raise Rejected("no such hold")
             if kind == "hold_ended" and payload.get("reason") == "expired":
                 raise Rejected("a hold expires by its date, not by a device (FR-HLD-11)")
+            answers = kind == "hold_approved" or (kind == "hold_ended" and payload.get("reason") == "declined")
+            if answers and principal.role != "admin":
+                raise Rejected("only an Administrator approves or declines a request (FR-HLD-06)")
     if entity_type == "item" and kind == "cleaning_ended":
         item = derived.get_entity(conn, "item", str(incoming.get("entity_id"))) or {}
         payload = incoming.get("payload")

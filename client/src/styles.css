@@ -943,7 +943,8 @@ main:has(> .viewfinder) > .event-choice {
 /* The holds on an item, and the form that places one (FR-HLD-01). */
 .holds,
 .holds .hold,
-.holds .hold-form {
+.hold-form,
+.request {
   touch-action: manipulation;
   display: grid;
   gap: 12px;

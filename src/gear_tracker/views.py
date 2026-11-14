@@ -296,6 +296,20 @@ def is_live(hold: Fields, today_iso: str) -> bool:
     return hold.get("state", "live") == "live" and str(hold.get("expires_on") or "") >= today_iso
 
 
+def is_waiting(hold: Fields, today_iso: str) -> bool:
+    """Whether a request still awaits an Administrator (FR-HLD-05): not answered, and its day has not passed.
+    Mirrors isWaiting in holds.ts."""
+    return hold.get("state") == "waiting" and str(hold.get("expires_on") or "") >= today_iso
+
+
+def hold_state(hold: Fields, today_iso: str) -> str:
+    """How a hold reads now: one past its day has expired, whether or not the sweep has said so."""
+    state = str(hold.get("state") or "live")
+    if state in ("live", "waiting") and str(hold.get("expires_on") or "") < today_iso:
+        return "expired"
+    return state
+
+
 def holds(state: State) -> list[Fields]:
     """Every hold, soonest to run out first."""
     return sorted(table(state, "hold"), key=lambda h: (str(h.get("expires_on") or ""), h["id"]))

@@ -16,7 +16,7 @@ import type { Store } from "./store";
 import { localDate } from "./time";
 import { newUlid } from "./ulid";
 
-export type HoldState = "live" | "put_back" | "handed_out" | "expired";
+export type HoldState = "live" | "waiting" | "put_back" | "handed_out" | "expired" | "declined";
 
 export interface Hold {
   id: string;
@@ -27,6 +27,11 @@ export interface Hold {
   expires_on: string;
   state?: HoldState;
   created_by?: string;
+  /** An Outreach worker asked for it (FR-HLD-05). `created_by` is who asked. */
+  requested?: boolean;
+  /** The Administrator who approved a request, and when (FR-HLD-06). */
+  approved_by?: string;
+  approved_at?: number;
   ended_at?: number;
   ended_by?: string;
   added_at?: number;
@@ -50,9 +55,17 @@ export const hold = (state: State, id: string): Hold | undefined => holds(state)
 /** Whether a hold still sets goods aside: not ended, and its day has not passed (FR-HLD-11). Twin of is_live in views.py. */
 export const isLive = (h: Hold, today: string): boolean => (h.state ?? "live") === "live" && h.expires_on >= today;
 
+/** Whether a request still awaits an Administrator (FR-HLD-05). Twin of is_waiting in views.py. */
+export const isWaiting = (h: Hold, today: string): boolean => h.state === "waiting" && h.expires_on >= today;
+
 /** How a hold reads now: an unended one past its day has expired, whether or not the server has said so. */
-export const holdState = (h: Hold, today: string): HoldState =>
-  isLive(h, today) ? "live" : (h.state ?? "live") === "live" ? "expired" : h.state!;
+export function holdState(h: Hold, today: string): HoldState {
+  const state = h.state ?? "live";
+  return (state === "live" || state === "waiting") && h.expires_on < today ? "expired" : state;
+}
+
+/** Requests waiting for an answer, soonest to run out first (FR-HLD-06). */
+export const waitingHolds = (state: State, today: string): Hold[] => holds(state).filter((h) => isWaiting(h, today));
 
 /** Holds in force, on one item or on all. A hold on a merged duplicate belongs to its survivor. */
 export function liveHolds(state: State, today: string, itemId?: string): Hold[] {
@@ -169,7 +182,7 @@ async function forget(store: Store, id: string): Promise<void> {
   });
 }
 
-async function end(store: Store, id: string, reason: "put_back" | "handed_out") {
+async function end(store: Store, id: string, reason: "put_back" | "handed_out" | "declined") {
   await store.record({
     entity_type: "hold",
     entity_id: id,
@@ -201,4 +214,41 @@ export async function handOutHold(store: Store, id: string): Promise<void> {
     payload: { hold_id: id, ...(pool ? { count: h.count ?? 1 } : {}) },
   });
   await end(store, id, "handed_out");
+}
+
+function waitingHold(store: Store, id: string): Hold {
+  const h = hold(store.state, id);
+  if (!h) throw new Error("no such hold");
+  if (!isWaiting(h, today(store))) throw new Error("this request has been answered");
+  if (!store.admin) throw new Error("only an Administrator answers a request");
+  return h;
+}
+
+/** How many of a request's goods are free to set aside right now (FR-HLD-08). */
+export function freeFor(store: Store, h: Hold): number {
+  const it = item(store.state, resolveItem(store.state, h.item_id));
+  return it ? available(store.state, it, today(store)) : 0;
+}
+
+/**
+ * Approve an Outreach worker's request (FR-HLD-06): the goods are set aside from now until its day.
+ * Refused when fewer are free than were asked for (FR-HLD-08).
+ */
+export async function approveHold(store: Store, id: string): Promise<void> {
+  const h = waitingHold(store, id);
+  const free = freeFor(store, h);
+  if ((h.count ?? 1) > free) throw new Error(h.count != null ? `only ${free} free to hold` : "not free to hold");
+  await store.record({
+    entity_type: "hold",
+    entity_id: id,
+    type: "hold_approved",
+    actor_id: actor(store),
+    payload: {},
+  });
+}
+
+/** Decline a request (FR-HLD-06). Nothing was set aside, and who it was for is forgotten (FR-HLD-17). */
+export async function declineHold(store: Store, id: string): Promise<void> {
+  waitingHold(store, id);
+  await end(store, id, "declined");
 }
