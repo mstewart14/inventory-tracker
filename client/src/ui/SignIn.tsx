@@ -2,6 +2,7 @@ import { type FormEvent, useState } from "react";
 import { type Api, ApiError, Offline } from "../lib/api";
 import type { Store } from "../lib/store";
 import { useKeyboardForm } from "./keyboardForm";
+import { hrefOf } from "../lib/router";
 import { PrivacyLink } from "./PrivacyLink";
 
 interface Props {
@@ -74,6 +75,10 @@ export function SignIn({ store, api, onSignedIn, notice }: Props) {
             {error}
           </p>
         )}
+        {/* Someone who is not staff, sent here to see what there is (FR-VIS-04). */}
+        <p className="muted small">
+          <a href={hrefOf("/catalogue")}>See what we have</a>
+        </p>
         <PrivacyLink />
       </main>
       <div className="actions">

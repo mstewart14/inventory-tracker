@@ -326,6 +326,36 @@ def available(state: State, it: Fields, today_iso: str) -> int:
     return 1 if in_stock and not held(state, it, today_iso) else 0
 
 
+def catalogue(state: State, today_iso: str) -> list[Fields]:
+    """What the public page lists (FR-VIS-04): each item marked public that someone could be given today,
+    by name. An item with nothing free is left off rather than shown as unavailable, and nothing here says
+    how many there are, where they are kept, where they came from, or who has a hold (FR-VIS-05).
+
+    A generic is one line however many units it has, and is listed while any unit is free.
+    """
+    found = []
+    for it in items(state):
+        if it.get("parent_id") or it.get("retired") or it.get("merged_into"):
+            continue
+        if visibility_of(state, it) != "public":
+            continue
+        if it.get("generic") and not is_pool(it):
+            free = any(available(state, u, today_iso) for u in units_of(state, it["id"]) if not u.get("retired"))
+        else:
+            free = available(state, it, today_iso) > 0
+        if not free:
+            continue
+        found.append(
+            {
+                "name": display_name(state, it),
+                "description": it.get("description") or "",
+                "categories": [category_name(state, cid) for cid in categories_of(state, it)],
+                "photos": [ph["id"] for ph in it.get("photos") or []],
+            }
+        )
+    return sorted(found, key=lambda row: row["name"].lower())
+
+
 def pool_counts(it: Fields) -> Fields:
     """Owned, in, missing, given, and out by holder (FR-INV-36). Mirrors poolCounts in inventory.ts. Holders at
     zero are absent. Owned is in, out and missing together; what was given away is no longer owned (FR-DST-01)."""

@@ -47,6 +47,7 @@ export function reportLinks(state: State, today: string): Link[] {
     { label: `What is out${out > 0 ? ` · ${out}` : ""}`, path: "/out" },
     { label: `Needs repair${broken > 0 ? ` · ${broken}` : ""}`, path: "/repairs" },
     { label: `Events · ${booked} upcoming`, path: "/events" },
+    { label: "Public catalogue", path: "/catalogue" },
   ];
 }
 

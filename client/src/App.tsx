@@ -19,6 +19,7 @@ import { Conflicts } from "./ui/Conflicts";
 import { Desk } from "./ui/Desk";
 import { Found } from "./ui/Found";
 import { Help } from "./ui/Help";
+import { Catalogue } from "./ui/Catalogue";
 import { Holds } from "./ui/Holds";
 import { Home } from "./ui/Home";
 import { InstallPrompt } from "./ui/InstallPrompt";
@@ -187,6 +188,8 @@ export function App({ store, api, now = Date.now }: Props) {
     const [head, second] = route.segments;
     if (head === "g" && second && !signInWanted)
       return <PublicItem api={api} code={second} onSignIn={() => setSignInWanted(true)} />;
+    // What the society may be able to give, for anyone to read (FR-VIS-04).
+    if (head === "catalogue" && !signInWanted) return <Catalogue api={api} onSignIn={() => setSignInWanted(true)} />;
     // An invite or reset link (FR-USR-12). Once redeemed, the device is signed in and starts at home.
     if (head === "join") return <Join store={store} api={api} onJoined={() => joined()} />;
     return (
@@ -307,6 +310,9 @@ function Screen({
       return <StockCheck store={store} />;
     case "holds":
       return <Holds store={store} />;
+    case "catalogue":
+      // The page the public sees, as they see it: it reads the server, not this device's copy.
+      return api ? <Catalogue api={api} /> : null;
     case "repairs":
       return second ? <RepairPage store={store} id={second} /> : <Repairs store={store} />;
     case "events":

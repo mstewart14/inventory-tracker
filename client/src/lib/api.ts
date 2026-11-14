@@ -198,6 +198,19 @@ export interface PublicCode {
   group: { name: string; contact: string };
 }
 
+/** One line of the public catalogue (FR-VIS-05): no counts, places, sources or ids. */
+export interface CatalogueItem {
+  name: string;
+  description: string;
+  categories: string[];
+  photos: string[];
+}
+
+export interface PublicCatalogue {
+  group: { name: string; contact: string };
+  items: CatalogueItem[];
+}
+
 export interface Timed<T> {
   data: T;
   /** Only a server that stamped its own reply gives us one to measure against (see `request`). */
@@ -439,6 +452,8 @@ export function createApi(options: ApiOptions = {}) {
     /** "Refresh now": fetch every feed again, on the spot. */
     refreshCalendars: () => request<{ feeds: CalendarFeed[] }>("POST", "/calendars/refresh"),
     publicCode: (code: string) => request<PublicCode>("GET", `/public/codes/${code}`),
+    /** What anyone may read with no account (FR-VIS-04). */
+    publicCatalogue: () => request<PublicCatalogue>("GET", "/public/catalogue"),
     /** A finder's note (FR-PUB-02). `website` is a honeypot: people never see it, so it is sent empty. */
     reportFound: (code: string, body: { note: string; contact: string; website: string }) =>
       request<Record<string, never>>("POST", `/public/codes/${code}/found`, body),

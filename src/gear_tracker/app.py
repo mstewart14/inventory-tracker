@@ -44,6 +44,7 @@ from gear_tracker import (
     notify,
     privacy,
     sync,
+    views,
 )
 from gear_tracker import photos as photo_files
 from gear_tracker.db import connect
@@ -73,6 +74,11 @@ FOUND_PER_ADDRESS = (5, HOUR_MS)
 FOUND_PER_CODE = (3, DAY_MS)
 FOUND_IN_ALL = (30, HOUR_MS)
 """How often a stranger may report gear found (FR-PUB-04): per address, per sticker, and in total."""
+
+CATALOGUE_PER_ADDRESS = (120, HOUR_MS)
+CATALOGUE_PHOTOS_PER_ADDRESS = (2000, HOUR_MS)
+"""How often one address may read the public catalogue and its photos (FR-VIS-04). Generous: a shared
+connection at a drop-in may be many people. It is there to stop a scraper, not a reader."""
 
 JOIN_PER_ADDRESS = (5, HOUR_MS)
 JOIN_IN_ALL = (30, HOUR_MS)
@@ -353,6 +359,8 @@ def create_app(
         "code": RateLimit(*FOUND_PER_CODE),
         "all": RateLimit(*FOUND_IN_ALL),
     }
+    catalogue_limit = RateLimit(*CATALOGUE_PER_ADDRESS)
+    catalogue_photo_limit = RateLimit(*CATALOGUE_PHOTOS_PER_ADDRESS)
     join_limits = {
         "address": RateLimit(*JOIN_PER_ADDRESS),
         "all": RateLimit(*JOIN_IN_ALL),
@@ -819,6 +827,41 @@ def create_app(
             raise NotFound("not one of our codes")
         group = derived.get_entity(conn, "setting", "group") or {}
         return stamped({"group": {"name": group.get("name", ""), "contact": group.get("contact", "")}})
+
+    @app.get("/public/catalogue")
+    def public_catalogue(request: Request, conn: Db) -> dict[str, Any]:
+        """What the society may be able to give, for anyone to read (FR-VIS-04). Only items marked
+        public, and of those only a name, a description, categories and photos (FR-VIS-05). Nothing
+        can be asked for here: the page says how to reach the society's staff (FR-VIS-06, FR-VIS-07).
+        """
+        now = now_ms()
+        if not catalogue_limit.allow(client_address(request), now):
+            raise TooMany("too many requests; try again later")
+        state = derived.snapshot(conn)
+        group = views.entity(state, "setting", "group") or {}
+        return stamped(
+            {
+                "group": {"name": group.get("name", ""), "contact": group.get("contact", "")},
+                "items": views.catalogue(state, views.today(now)),
+            }
+        )
+
+    @app.get("/public/photos/{photo_id}")
+    def public_photo(request: Request, conn: Db, photo_id: str) -> FileResponse:
+        """A photo of something on the public catalogue, and no other photo (FR-VIS-05). One taken off
+        the catalogue stops being served at once, so nothing caches it for long."""
+        now = now_ms()
+        if not catalogue_photo_limit.allow(client_address(request), now):
+            raise TooMany("too many requests; try again later")
+        if not is_ulid(photo_id):
+            raise BadRequest("photo_id must be a ULID")
+        listed = views.catalogue(derived.snapshot(conn), views.today(now))
+        path = photo_files.path_of(photo_dir, photo_id) if any(photo_id in row["photos"] for row in listed) else None
+        if path is None:
+            raise NotFound("no such photo")
+        return FileResponse(
+            path, media_type=photo_files.content_type_of(path), headers={"Cache-Control": "private, max-age=300"}
+        )
 
     @app.get("/privacy", include_in_schema=False)
     def privacy_policy(conn: Db) -> HTMLResponse:

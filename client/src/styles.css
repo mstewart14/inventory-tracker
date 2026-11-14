@@ -908,6 +908,38 @@ main:has(> .viewfinder) > .event-choice {
   grid-column: 1 / -1;
 }
 
+/* The public catalogue (FR-VIS-04): one block per thing, photos in a row. */
+.catalogue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.catalogue > li {
+  padding: 12px 0;
+  border-top: 1px solid currentColor;
+  border-top-color: color-mix(in srgb, currentColor 20%, transparent);
+}
+
+.catalogue .item-title {
+  margin: 0 0 4px;
+}
+
+.catalogue-photos {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.catalogue-photos img {
+  height: 160px;
+  width: auto;
+  border-radius: 6px;
+}
+
 /* The holds on an item, and the form that places one (FR-HLD-01). */
 .holds,
 .holds .hold,

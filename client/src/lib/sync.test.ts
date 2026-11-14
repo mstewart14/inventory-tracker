@@ -445,7 +445,7 @@ test("a rejection the server could not identify surfaces as an unclean sync, but
 
 test("a hold's handle goes up beside the events, never in them, and the server's list replaces ours (FR-HLD-17)", async () => {
   await sync(store, api(), () => clock);
-  await store.setMeta({ pending_handles: { "hold-1": "JD" } });
+  await store.setMeta({ pending_handles: { "hold-1": "Mouse" } });
   await store.record({
     entity_type: "hold",
     entity_id: "hold-1",
@@ -454,10 +454,11 @@ test("a hold's handle goes up beside the events, never in them, and the server's
     payload: { item_id: "tent-1", expires_on: "2030-01-01" },
   });
   expect(await sync(store, api(), () => clock)).toEqual({ ok: true });
-  expect(server.pushBodies.at(-1)!.hold_handles).toEqual([{ hold_id: "hold-1", handle: "JD" }]);
-  expect(JSON.stringify(server.events)).not.toContain("JD");
+  expect(server.pushBodies.at(-1)!.hold_handles).toEqual([{ hold_id: "hold-1", handle: "Mouse" }]);
+  // A handle no random id could spell: ids have no lower-case letters.
+  expect(JSON.stringify(server.events)).not.toContain("Mouse");
   expect(store.meta.pending_handles).toBeUndefined();
-  expect(store.meta.hold_handles).toEqual({ "hold-1": "JD" });
+  expect(store.meta.hold_handles).toEqual({ "hold-1": "Mouse" });
 
   // The hold ended elsewhere, so the server no longer has the handle: neither do we.
   server.handles = {};

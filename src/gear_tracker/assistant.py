@@ -2121,6 +2121,15 @@ def _hold_brief(state: dict[str, Any], hold: dict[str, Any], handles: dict[str, 
     return out
 
 
+def public_catalogue() -> dict[str, Any]:
+    """What the public page lists right now (FR-VIS-04): the items marked public that are free to give,
+    with only the name, description, categories and photo ids it shows (FR-VIS-05). Use it to check what
+    a mark has made public. An item joins or leaves it through `update_item`'s `visibility`."""
+    with _open() as (conn, _who):
+        rows = views.catalogue(_state(conn), views.today(now_ms()))
+        return {"items": rows, "count": len(rows)}
+
+
 def list_holds(item_id: str | None = None, include_ended: StrictBool = False) -> dict[str, Any]:
     """Goods set aside for clients, soonest to run out first (FR-HLD-01). `for` is the client's handle, and
     is gone once a hold ends (FR-HLD-17). `item_id` narrows to one item; `include_ended` adds holds that
@@ -3224,6 +3233,7 @@ TOOLS = [
     check_in,
     hand_out,
     receive,
+    public_catalogue,
     list_holds,
     place_hold,
     extend_hold,

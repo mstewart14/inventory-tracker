@@ -621,6 +621,24 @@ recount says how many are there and loses how many came in. A receipt's `source`
 the history; state keeps only the pool's own `source`. A source is on the permanent log, so it should name a drive or an
 organisation, not a person who may later ask to be forgotten.
 
+### The public catalogue
+
+`/catalogue` is a page anyone can open, signed in or not (FR-VIS-04). It reads one route, `GET /public/catalogue`, and
+holds nothing on the device: nobody outside the society carries a copy of the inventory. The reply is built by
+`views.catalogue` and is the whole of what the public may know: for each item marked `public` that someone could be
+given today, a name, a description, category names and photo ids. There are no item ids, counts, homes, sources or
+people in it, so the page cannot leak what it was never sent (FR-VIS-05). An item with nothing free is left off, which
+says less than listing it as unavailable would (FR-VIS-15).
+
+A photo is the one other thing served with no sign-in, from `GET /public/photos/<id>`, and only while its id is in that
+same list (FR-VIS-18). Taking an item off the catalogue stops its photos at the next request; the reply may be cached
+for five minutes, privately, so a shared proxy does not keep it. Both routes are rate-limited per address, generously,
+because a drop-in's connection may be many readers (FR-VIS-19). The page offers nothing to ask for goods with, and there
+is no route that would take such a request (FR-VIS-07).
+
+The description is the risk. It is the field staff type notes into, and marking an item public publishes it, so the item
+form says so when Public is chosen (FR-VIS-20).
+
 ## Holds
 
 A hold sets goods aside for a client until a day (FR-HLD-01). It is an entity on the log, `hold`: `created` with the

@@ -190,6 +190,11 @@ export function ItemFields({ store, values, onChange, nameRef, generic }: Props)
           ))}
         </select>
       </label>
+      {values.visibility === "public" && (
+        <p className="notice" role="note">
+          Anyone can read its name, description and photos on the public page. Keep staff notes out of the description.
+        </p>
+      )}
       <BoughtOn value={values.purchase_date} onChange={(purchase_date) => set({ purchase_date })} />
     </>
   );
