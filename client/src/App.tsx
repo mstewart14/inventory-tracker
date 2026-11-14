@@ -30,6 +30,7 @@ import { Join } from "./ui/Join";
 import { LeaveDialog } from "./ui/LeaveDialog";
 import { Mail } from "./ui/Mail";
 import { NewItem, NewUnit } from "./ui/NewItem";
+import { Outreach } from "./ui/Outreach";
 import { Notifications } from "./ui/Notifications";
 import { OutTable } from "./ui/OutTable";
 import { Page } from "./ui/Page";
@@ -86,7 +87,8 @@ export function App({ store, api, now = Date.now }: Props) {
   // One sync at a time; a second request while one runs is dropped, not queued.
   const runSync = useCallback(
     async (manual = false): Promise<SyncOutcome | undefined> => {
-      if (inFlight.current || !store.meta.token) return undefined;
+      // An Outreach device is sent no log and writes none (FR-VIS-03).
+      if (inFlight.current || !store.meta.token || store.outreach) return undefined;
       inFlight.current = true;
       setBusy(true);
       if (manual) setManualBusy(true);
@@ -97,7 +99,11 @@ export function App({ store, api, now = Date.now }: Props) {
       } catch (error) {
         // Anything sync() did not turn into a SyncOutcome itself (a malformed response, say) still
         // has to reach the banner: otherwise it keeps its last state and autosync never backs off.
-        const outcome: SyncOutcome = { ok: false, reason: "error", message: String(error) };
+        const outcome: SyncOutcome = {
+          ok: false,
+          reason: "error",
+          message: String(error),
+        };
         setOutcome(outcome);
         return outcome;
       } finally {
@@ -129,6 +135,12 @@ export function App({ store, api, now = Date.now }: Props) {
 
   // A screen that just sits there still hears about another device's work.
   useEffect(() => pollSync(runSync), [runSync]);
+
+  // A device that was Staff and is now Outreach drops its copy of the inventory (FR-USR-42).
+  const outreach = Boolean(store.meta.token) && store.outreach;
+  useEffect(() => {
+    if (outreach && store.holdsData) void store.forget();
+  }, [outreach, store]);
 
   // Asked, not relied on. iOS says no; the unsent count is the warning (NFR-DATA-11).
   useEffect(() => {
@@ -171,7 +183,7 @@ export function App({ store, api, now = Date.now }: Props) {
 
   async function accountDeleted() {
     // The server already ended this session; there is nothing to sign out of.
-    setFarewell("Your account is deleted. An Admin can restore it.");
+    setFarewell("Your account is deleted. An Administrator can restore it.");
     navigate("/", true);
     await store.setMeta({ token: undefined, user: undefined });
   }
@@ -205,7 +217,21 @@ export function App({ store, api, now = Date.now }: Props) {
     );
   }
 
-  const shell: Shell = { busy, manualBusy, outcome, now, sync: runSync, syncNow, signOut, api, store };
+  // A worker from another organization gets one screen, read from the server, and none of the app
+  // around it: no inventory, no scanning, no settings (FR-USR-39).
+  if (store.outreach) return <Outreach api={api} name={store.meta.user?.name ?? ""} onSignOut={() => void signOut()} />;
+
+  const shell: Shell = {
+    busy,
+    manualBusy,
+    outcome,
+    now,
+    sync: runSync,
+    syncNow,
+    signOut,
+    api,
+    store,
+  };
   const pending = store.pending;
   const stale = pending.filter((e) => e.occurred_at < now() - STALE_PENDING_MS);
   const interrupted = stale.length > 0 && !interruptSeen;

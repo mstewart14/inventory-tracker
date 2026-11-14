@@ -1,5 +1,5 @@
 #!/bin/sh
-# A real server for the browser tests: fresh database, one Admin, the demo
+# A real server for the browser tests: fresh database, one Administrator, the demo
 # inventory, the built client. The specs share it, and it starts from the same
 # file a fresh instance does (NFR-MAINT-10).
 set -eu

@@ -9,14 +9,14 @@ interface Props {
   store: Store;
 }
 
-/** Where gear lives when it is not out. Admin only (FR-SET-02, FR-SET-05). */
+/** Where gear lives when it is not out. Administrator only (FR-SET-02, FR-SET-05). */
 export function SettingsLocations({ store }: Props) {
   useStore(store);
 
   if (!store.admin) {
     return (
       <Page title="Not found" back="/settings">
-        <p>Admins only.</p>
+        <p>Administrators only.</p>
       </Page>
     );
   }

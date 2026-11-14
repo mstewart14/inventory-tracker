@@ -51,7 +51,7 @@ test("the first tap asks; the second deletes and signs out", async () => {
   expect(screen.getByText(/This signs you out here, and you cannot sign in again/)).toBeInTheDocument();
   expect(screen.getByText(/Your other devices sign out the next time they connect/)).toBeInTheDocument();
   expect(screen.getByText(/Your name stays on the group's records/)).toBeInTheDocument();
-  expect(screen.getByText(/An Admin can restore your access/)).toBeInTheDocument();
+  expect(screen.getByText(/An Administrator can restore your access/)).toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "Delete my account…" }));
   expect(calls).toEqual([]);
@@ -73,15 +73,15 @@ test("offline, it says it needs a connection and stays signed in", async () => {
   expect(deleted).toBe(0);
 });
 
-test("the server's refusal is shown: the last Admin", async () => {
+test("the server's refusal is shown: the last Administrator", async () => {
   answer = {
     status: 409,
-    body: { error: "conflict", message: "you are the last Admin; make someone else an Admin first" },
+    body: { error: "conflict", message: "you are the last Administrator; make someone else an Administrator first" },
   };
   mount();
   await user.click(screen.getByRole("button", { name: "Delete my account…" }));
   await user.click(screen.getByRole("button", { name: "Really delete? You cannot sign in again" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("make someone else an Admin first");
+  expect(await screen.findByRole("alert")).toHaveTextContent("make someone else an Administrator first");
   expect(deleted).toBe(0);
 });
 
@@ -122,7 +122,7 @@ const confirm = async () => {
 
 test.each([
   ["a lost reply, retried", 401, { error: "unauthorized", message: "this token is not valid" }],
-  ["an Admin got there first", 403, { error: "deactivated", message: "this account has been deactivated" }],
+  ["an Administrator got there first", 403, { error: "deactivated", message: "this account has been deactivated" }],
 ])("%s: already deleted, so this device signs out", async (_, status, body) => {
   answer = { status, body };
   mount();

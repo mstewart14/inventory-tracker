@@ -9,14 +9,14 @@ interface Props {
   store: Store;
 }
 
-/** How gear is grouped in the list. Admin only (FR-SET-07). */
+/** How gear is grouped in the list. Administrator only (FR-SET-07). */
 export function SettingsCategories({ store }: Props) {
   useStore(store);
 
   if (!store.admin) {
     return (
       <Page title="Not found" back="/settings">
-        <p>Admins only.</p>
+        <p>Administrators only.</p>
       </Page>
     );
   }

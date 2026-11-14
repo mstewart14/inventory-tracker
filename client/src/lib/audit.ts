@@ -271,7 +271,7 @@ export function entries<E extends ReplayEvent>(state: State, events: E[]): (Entr
   return rows.reverse();
 }
 
-/** Every kind of event the log holds, for the filter an Admin picks from. */
+/** Every kind of event the log holds, for the filter an Administrator picks from. */
 export const EVENT_TYPES: { value: string; label: string }[] = [
   ...Object.entries(HAPPENED).map(([value, label]) => ({ value, label })),
   { value: "field_changed", label: "Edited" },

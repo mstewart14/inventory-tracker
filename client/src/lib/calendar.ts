@@ -1,5 +1,5 @@
 /**
- * Upcoming events from the calendar feeds an Admin adds (FR-RES-20), offered as the person
+ * Upcoming events from the calendar feeds an Administrator adds (FR-RES-20), offered as the person
  * types an event name in the reservation form and a scanning session. The list itself lives in
  * `store.meta.calendar_events`, refreshed on every sync (see sync.ts); this is just the search
  * over it, plus the names already used here (FR-RES-27, see movement.ts).

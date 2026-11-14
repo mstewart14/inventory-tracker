@@ -15,8 +15,9 @@ The functional requirements, non-functional requirements and stories still descr
 (FR-USR-36 on), holds (section 12), visibility (section 13), handing out (section 14) and intake (section 15), which are
 written for the society. Handing out and intake are built. Holds are built for Staff and Administrators: Outreach
 requests, approval and delivery are not (FR-HLD-05 to 07, 14, 15, 21 to 25). The public catalogue is built (FR-VIS-04 to
-07, 15 to 23). Outreach accounts are not, so the Outreach mark does nothing yet (FR-VIS-02, 03, 09 to 12). Roles are not
-built yet. Until a section is rewritten, read it as what the code does today, not what the society needs.
+07, 15 to 23). The three roles are built (FR-USR-36 to 46): an Outreach account signs in and sees the items marked for
+it, with places and counts (FR-VIS-02, 03, 09 to 12, 24 to 26). It cannot ask for a hold yet. Until a section is
+rewritten, read it as what the code does today, not what the society needs.
 
 ## Documents
 
@@ -64,6 +65,13 @@ see what is marked for them; the public catalogue shows what is marked Public.
 
 **Every hold has an end date.** It is set when the hold is made and can be moved later. A hold that runs out goes back
 into general stock, and everyone involved is told.
+
+**An Outreach device holds nothing.** Staff devices keep a copy of the whole inventory so they work with no network. An
+Outreach worker belongs to another organization, so their device is sent only the list they may see, each time they open
+it, and needs a connection. Moving someone into or out of Outreach signs them out everywhere.
+
+**A join link never makes an Administrator.** It makes Staff or Outreach accounts. An Administrator is invited by name
+or promoted.
 
 **Only an Administrator approves an Outreach request,** for now.
 

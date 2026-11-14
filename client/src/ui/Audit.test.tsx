@@ -8,7 +8,7 @@ import { Audit } from "./Audit";
 import { openStore } from "./codeTestKit";
 import { alice, carol, seedUsers } from "./moveTestKit";
 
-// The whole log on one screen, for an Admin, filtered (FR-USR-24).
+// The whole log on one screen, for an Administrator, filtered (FR-USR-24).
 const T0 = 1_756_684_800_000; // 2025-09-01 00:00 UTC, which is 2025-08-31 17:00 in Vancouver.
 
 let store: Store;
@@ -216,6 +216,6 @@ test("with no signal it says so, because the whole log is on the server", async 
 test("a User cannot read it", async () => {
   await store.setMeta({ user: { id: "carol", name: "Carol", role: "user", active: true } });
   mount();
-  expect(await screen.findByText("Admins only.")).toBeInTheDocument();
+  expect(await screen.findByText("Administrators only.")).toBeInTheDocument();
   expect(asked).toEqual([]);
 });

@@ -13,7 +13,7 @@ interface Props {
 
 /**
  * One person's signed-in devices and assistants (FR-USR-14): the Users list for
- * an Admin looking at someone else, and Settings for looking at your own.
+ * an Administrator looking at someone else, and Settings for looking at your own.
  */
 export function DeviceList({ userId, me, myDevice, api, onError, label }: Props) {
   const [devices, setDevices] = useState<Device[] | null>(null);

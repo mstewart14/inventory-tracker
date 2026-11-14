@@ -395,13 +395,13 @@ def reasons(db, principal, *events_):
 
 def test_settings_take_an_admin(db):
     change = own(USER, entity_type="setting", entity_id="group", type="created", payload={"name": "10th Richmond"})
-    assert reasons(db, USER, change) == ["settings are changed by an Admin"]
+    assert reasons(db, USER, change) == ["settings are changed by an Administrator"]
     assert reasons(db, ADMIN, {**change, "id": new_ulid()}) == []
 
 
 def test_locations_take_an_admin(db):
     made = own(USER, entity_type="location", entity_id="loc-1", type="created", payload={"name": "Shed"})
-    assert reasons(db, USER, made) == ["locations are an Admin's job (FR-SET-05)"]
+    assert reasons(db, USER, made) == ["locations are an Administrator's job (FR-SET-05)"]
     assert reasons(db, ADMIN, {**made, "id": new_ulid()}) == []
 
 
@@ -416,7 +416,7 @@ def test_anyone_may_create_a_category_but_only_an_admin_changes_one(db):
         payload={"field": "name", "value": "Tarps", "old": "Tents"},
         device_seq=2,
     )
-    assert reasons(db, USER, renamed) == ["categories are renamed and deleted by an Admin (FR-SET-12)"]
+    assert reasons(db, USER, renamed) == ["categories are renamed and deleted by an Administrator (FR-SET-12)"]
     assert reasons(db, ADMIN, {**renamed, "id": new_ulid()}) == []
 
 
@@ -432,13 +432,13 @@ def test_items_are_merged_by_an_admin(db):
         now=T0,
     )
     merge = own(USER, payload={"field": "merged_into", "value": "tent-2", "old": None}, device_seq=3)
-    assert reasons(db, USER, merge) == ["items are merged by an Admin (FR-INV-13)"]
+    assert reasons(db, USER, merge) == ["items are merged by an Administrator (FR-INV-13)"]
     assert reasons(db, ADMIN, {**merge, "id": new_ulid()}) == []
 
 
 def test_anyone_folds_one_thing_into_a_new_shape(db):
     """A fold changes an item's kind (FR-INV-33, FR-INV-34, FR-INV-39, FR-INV-40); a merge says two
-    records are one (FR-INV-13). Both write `merged_into`, and only the merge takes an Admin."""
+    records are one (FR-INV-13). Both write `merged_into`, and only the merge takes an Administrator."""
     push(
         db,
         USER,
@@ -476,9 +476,9 @@ def test_anyone_folds_one_thing_into_a_new_shape(db):
     # A generic with nothing under it becomes a single item (FR-INV-39).
     assert reasons(db, USER, fold("tents", "tent-2", 8)) == []
     # A generic that still has a unit is not folded: that would be two records of one thing.
-    assert reasons(db, USER, fold("tarps", "tent-2", 9)) == ["items are merged by an Admin (FR-INV-13)"]
+    assert reasons(db, USER, fold("tarps", "tent-2", 9)) == ["items are merged by an Administrator (FR-INV-13)"]
     # Nor is one single item into another.
-    assert reasons(db, USER, fold("tent-2", "tarp-1", 10)) == ["items are merged by an Admin (FR-INV-13)"]
+    assert reasons(db, USER, fold("tent-2", "tarp-1", 10)) == ["items are merged by an Administrator (FR-INV-13)"]
     # A deleted unit is not under it any more, as on every list (FR-INV-32).
     events.append_server(
         db, "alice", "item", "tarp-1", "field_changed", {"field": "deleted", "value": True, "old": None}, now=T0
@@ -550,7 +550,7 @@ def test_a_ticket_is_deleted_by_its_raiser_until_someone_else_touches_it(db):
     comment = {"type": "note_added", "payload": {"text": "mine"}}
     assert reasons(db, USER, own(USER, entity_type="repair", entity_id="t1", device_seq=2, **comment)) == []
     assert reasons(db, bob, own(bob, entity_id="t1", device_seq=3, **gone)) == [
-        "only an Admin can delete someone else's ticket"
+        "only an Administrator can delete someone else's ticket"
     ]
     deleted = own(USER, entity_id="t1", device_seq=4, **gone)
     assert reasons(db, USER, deleted) == []
@@ -563,18 +563,18 @@ def test_a_ticket_is_deleted_by_its_raiser_until_someone_else_touches_it(db):
     moved = {"field": "state", "value": "in_progress", "old": "open"}
     assert reasons(db, bob, own(bob, entity_type="repair", entity_id="t2", device_seq=7, payload=moved)) == []
     assert reasons(db, USER, own(USER, entity_id="t2", device_seq=8, **gone)) == [
-        "someone else has worked on this ticket; ask an Admin to delete it"
+        "someone else has worked on this ticket; ask an Administrator to delete it"
     ]
     assert reasons(db, ADMIN, own(ADMIN, entity_id="t2", device_seq=9, **gone)) == []
 
 
 def test_items_are_deleted_by_an_admin_and_then_cannot_move(db):
-    """A record made in error goes for good; only an Admin writes the field (FR-INV-32)."""
+    """A record made in error goes for good; only an Administrator writes the field (FR-INV-32)."""
     made = own(USER, type="created", payload={"name": "Tent"}, device_seq=1)
     assert reasons(db, USER, made) == []
 
     gone = own(USER, payload={"field": "deleted", "value": True, "old": None}, device_seq=2)
-    assert reasons(db, USER, gone) == ["items are deleted by an Admin"]
+    assert reasons(db, USER, gone) == ["items are deleted by an Administrator"]
     assert reasons(db, ADMIN, {**gone, "id": new_ulid()}) == []
 
     out = own(ADMIN, type="checked_out", payload={"holder_id": "alice"}, device_seq=3)
@@ -925,7 +925,7 @@ def test_a_merge_into_something_that_is_not_an_id_is_not_a_fold(db):
     generic = {"name": "Tents", "generic": True}
     push(db, USER, batch(USER, own(USER, entity_id="tents", type="created", payload=generic)), now=T0)
     merge = own(USER, entity_id="tents", payload={"field": "merged_into", "value": 5, "old": None}, device_seq=2)
-    assert reasons(db, USER, merge) == ["items are merged by an Admin (FR-INV-13)"]
+    assert reasons(db, USER, merge) == ["items are merged by an Administrator (FR-INV-13)"]
     assert events.get(db, merge["id"]) is None
 
 

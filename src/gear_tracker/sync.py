@@ -59,6 +59,13 @@ def _require_active(principal: Principal) -> None:
         raise Deactivated("this account has been deactivated")
 
 
+def _require_staff(principal: Principal) -> None:
+    """Refuse an Outreach account (FR-USR-39). The log holds every item, hold and person, and Outreach
+    is another organization: it is sent none of it, and writes none of it (FR-VIS-03)."""
+    if principal.role == "outreach":
+        raise Forbidden("Outreach accounts cannot do this")
+
+
 def log_id(conn: sqlite3.Connection) -> str:
     """This log's identity, set when the database was created (migration 0007).
 
@@ -71,6 +78,7 @@ def log_id(conn: sqlite3.Connection) -> str:
 def bootstrap(conn: sqlite3.Connection, principal: Principal, now: int | None = None) -> dict[str, Any]:
     """Current state and the cursor it was true at, read in one transaction (FR-OFF-14)."""
     _require_active(principal)
+    _require_staff(principal)
     now = now_ms() if now is None else now
     conn.execute("BEGIN")
     try:
@@ -98,6 +106,7 @@ def push(conn: sqlite3.Connection, principal: Principal, body: Any, now: int | N
     Every event is attributed to the signed-in user and device; the server
     does not take the device's word for either.
     """
+    _require_staff(principal)
     now = now_ms() if now is None else now
     try:
         batch = PushBody.model_validate(body)
@@ -195,7 +204,7 @@ def _has_units(conn: sqlite3.Connection, generic_id: str) -> bool:
 
 def _is_fold(conn: sqlite3.Connection, source_id: Any, target_id: Any) -> bool:
     """Whether a merge only reshapes one thing, which anyone may do, rather than saying two records
-    are one thing, which an Admin does (FR-INV-13).
+    are one thing, which an Administrator does (FR-INV-13).
 
     A fold is what the device writes to change an item's kind: a single item becomes a pool
     (FR-INV-34), or a generic with nothing left under it becomes a single item or a pool
@@ -217,18 +226,18 @@ def _check_entity_rules(conn: sqlite3.Connection, principal: Principal, incoming
     if entity_type == "user":
         raise Rejected("user changes go through the accounts API")
     if entity_type == "setting" and principal.role != "admin":
-        raise Rejected("settings are changed by an Admin")
+        raise Rejected("settings are changed by an Administrator")
     if entity_type == "location" and principal.role != "admin":
-        raise Rejected("locations are an Admin's job (FR-SET-05)")
+        raise Rejected("locations are an Administrator's job (FR-SET-05)")
     if entity_type == "category" and principal.role != "admin" and kind != "created":
         # Anyone signed in may add a category, same as the item editor (see assistant.add_category).
-        raise Rejected("categories are renamed and deleted by an Admin (FR-SET-12)")
+        raise Rejected("categories are renamed and deleted by an Administrator (FR-SET-12)")
     if entity_type == "item" and kind == "field_changed":
         payload = incoming.get("payload")
         field = payload.get("field") if isinstance(payload, dict) else None
-        # Deleting takes a record off every list for good (FR-INV-32), so it stays with an Admin.
+        # Deleting takes a record off every list for good (FR-INV-32), so it stays with an Administrator.
         if field == "deleted" and principal.role != "admin":
-            raise Rejected("items are deleted by an Admin")
+            raise Rejected("items are deleted by an Administrator")
         # A pool has no units (FR-INV-34): moving one under a pool is refused, whether at creation or later.
         value = payload.get("value") if isinstance(payload, dict) else None
         if field == "parent_id" and _is_pool(conn, value):
@@ -238,7 +247,7 @@ def _check_entity_rules(conn: sqlite3.Connection, principal: Principal, incoming
             and principal.role != "admin"
             and not _is_fold(conn, incoming.get("entity_id"), value)
         ):
-            raise Rejected("items are merged by an Admin (FR-INV-13)")
+            raise Rejected("items are merged by an Administrator (FR-INV-13)")
     if entity_type == "item" and kind == "created":
         payload = incoming.get("payload")
         if isinstance(payload, dict):
@@ -410,9 +419,9 @@ def _check_own_untouched_ticket(conn: sqlite3.Connection, principal: Principal, 
         )
     }
     if not actors.get(principal.user_id):
-        raise Rejected("only an Admin can delete someone else's ticket")
+        raise Rejected("only an Administrator can delete someone else's ticket")
     if len(actors) > 1:
-        raise Rejected("someone else has worked on this ticket; ask an Admin to delete it")
+        raise Rejected("someone else has worked on this ticket; ask an Administrator to delete it")
 
 
 def _check_drift(conn: sqlite3.Connection, event: events.Event, measured_offset: int, now: int) -> None:
@@ -459,6 +468,7 @@ def pull(
     `log` is the log the device's snapshot came from, when it knows one.
     """
     _require_active(principal)
+    _require_staff(principal)
     now = now_ms() if now is None else now
     if cursor < 0:
         raise BadRequest("since must be a non-negative integer")

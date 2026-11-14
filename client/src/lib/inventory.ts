@@ -75,7 +75,7 @@ export interface Item {
   /** Set on a duplicate: the item it was folded into (FR-INV-13). Everything that reads an id follows it. */
   merged_into?: string | null;
   /**
-   * A record made in error, taken off every list by an Admin (FR-INV-32). A
+   * A record made in error, taken off every list by an Administrator (FR-INV-32). A
    * tombstone, like a location's: the row stays so old references can name it,
    * and there is no way back in the app. Retire (FR-INV-04) is the one for gear
    * written off.

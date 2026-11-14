@@ -60,7 +60,7 @@ async function fillIn() {
   await user.type(screen.getByLabelText("Send from"), "gear@example.org");
 }
 
-test("an Admin fills in one account and sends a test to themselves (FR-USR-16)", async () => {
+test("an Administrator fills in one account and sends a test to themselves (FR-USR-16)", async () => {
   mount();
   await fillIn();
   await user.click(screen.getByRole("button", { name: "Save" }));

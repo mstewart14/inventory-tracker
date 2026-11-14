@@ -68,7 +68,7 @@ def run(monkeypatch, capsys, *args, stdin=""):
 def test_seeds_everything(db, tmp_path):
     done = apply(db, tmp_path)
 
-    assert done == ["created Admin alex@example.org", "created the group setting", "set mail"]
+    assert done == ["created Administrator alex@example.org", "created the group setting", "set mail"]
     user_id = accounts.user_id_of(db, "alex@example.org")
     assert user_id is not None
     assert accounts.get_user(db, user_id)["role"] == "admin"
@@ -147,7 +147,7 @@ def test_a_field_changed_in_the_app_goes_back(db, tmp_path):
 
 
 def test_the_iphone_app_link_is_left_alone_when_the_file_omits_it(db, tmp_path):
-    """An Admin may set it in the app instead (NFR-DEP-12)."""
+    """An Administrator may set it in the app instead (NFR-DEP-12)."""
     apply(db, tmp_path)
     assert "iphone_app_url" not in group(db)
     user_id = accounts.user_id_of(db, "alex@example.org")
@@ -204,12 +204,12 @@ def test_a_password_changed_in_the_app_is_left_alone(db, tmp_path):
 
 
 def test_a_new_email_makes_a_second_admin(db, tmp_path):
-    """create-admin refuses this; the file may name a new Admin after the first one was made in the app."""
+    """create-admin refuses this; the file may name a new Administrator after the first one was made in the app."""
     apply(db, tmp_path)
 
     done = apply(db, tmp_path, FILE.replace("alex@example.org", "sam@example.org"))
 
-    assert done[0] == "created Admin sam@example.org"
+    assert done[0] == "created Administrator sam@example.org"
     assert accounts.active_admins(db) == 2
 
 
@@ -226,7 +226,7 @@ def test_no_mail_section_leaves_mail_alone(db, tmp_path):
 
 
 def test_no_mail_section_and_none_stored_configures_nothing(db, tmp_path):
-    assert apply(db, tmp_path, NO_MAIL) == ["created Admin alex@example.org", "created the group setting"]
+    assert apply(db, tmp_path, NO_MAIL) == ["created Administrator alex@example.org", "created the group setting"]
     assert not mail.configured(db)
 
 
@@ -317,7 +317,7 @@ def test_gear_admin_seed(tmp_path, monkeypatch, capsys):
     code, out, err = run(monkeypatch, capsys, "--db", str(db_path), "seed", "--file", str(path))
 
     assert code == 0, err
-    assert out.splitlines() == ["created Admin alex@example.org", "created the group setting", "set mail"]
+    assert out.splitlines() == ["created Administrator alex@example.org", "created the group setting", "set mail"]
     with open_db(db_path) as conn:
         assert accounts.sign_in(conn, SignIn(email="alex@example.org", password="correct horse", device_id="p"))
 

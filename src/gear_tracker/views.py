@@ -356,6 +356,44 @@ def catalogue(state: State, today_iso: str) -> list[Fields]:
     return sorted(found, key=lambda row: row["name"].lower())
 
 
+def outreach_items(state: State, today_iso: str) -> list[Fields]:
+    """What an Outreach worker is shown (FR-VIS-02): each item marked for Outreach or for the public that has
+    something free, with where it is kept and how many could be asked for (FR-VIS-09).
+
+    Goods on a hold are left out of the count and nothing says they are held (FR-VIS-11), and an item with
+    none free is left off (FR-VIS-12). No source, no holds, no people. A generic is one line: its count is
+    its free units, and its places are where those units are. A place is the location's name alone.
+    """
+    found = []
+    for it in items(state):
+        if it.get("parent_id") or it.get("retired") or it.get("merged_into"):
+            continue
+        if visibility_of(state, it) not in ("outreach", "public"):
+            continue
+        if it.get("generic") and not is_pool(it):
+            free = [u for u in units_of(state, it["id"]) if available(state, u, today_iso)]
+            count = len(free)
+        else:
+            count = available(state, it, today_iso)
+            free = [it]
+        if count <= 0:
+            continue
+        # The room and no more: not the shelf, and not the person an item is kept by (FR-VIS-27).
+        places = sorted({location_name(state, u["home_location_id"]) for u in free if u.get("home_location_id")})
+        found.append(
+            {
+                "id": it["id"],
+                "name": display_name(state, it),
+                "description": it.get("description") or "",
+                "categories": [category_name(state, cid) for cid in categories_of(state, it)],
+                "photos": [ph["id"] for ph in it.get("photos") or []],
+                "locations": places,
+                "available": count,
+            }
+        )
+    return sorted(found, key=lambda row: row["name"].lower())
+
+
 def pool_counts(it: Fields) -> Fields:
     """Owned, in, missing, given, and out by holder (FR-INV-36). Mirrors poolCounts in inventory.ts. Holders at
     zero are absent. Owned is in, out and missing together; what was given away is no longer owned (FR-DST-01)."""

@@ -133,7 +133,7 @@ def has_items(conn: sqlite3.Connection) -> bool:
 
 
 def load(conn: sqlite3.Connection, spec: Inventory, actor_id: str, now: int | None = None) -> str:
-    """Write the file as events by the server, on the Admin's behalf. Refuses a database that has items."""
+    """Write the file as events by the server, on the Administrator's behalf. Refuses a database that has items."""
     if has_items(conn):
         raise Conflict("this database already has items; test data only loads into an empty one")
     now = events.now_ms() if now is None else now

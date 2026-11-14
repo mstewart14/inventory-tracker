@@ -77,7 +77,7 @@ keep it working and secure. They are deleted after a while.</p>
 
 <h2>Who can see it</h2>
 <ul>
-<li>Signed-in members of the group see the records. Admins also see members' email addresses.</li>
+<li>Signed-in members of the group see the records. Administrators also see members' email addresses.</li>
 <li>Members who ask for email alerts get them about found gear, repair tickets and new members.</li>
 <li>Someone who scans a code without signing in sees only the group's name and how to contact it.</li>
 </ul>
@@ -101,7 +101,7 @@ keep details about youth out of notes.</p>
 <h2>Deleting your account</h2>
 <p>In the app, go to Settings, then Delete my account. This signs you out, and you cannot sign in again. Your other
 devices sign out the next time they connect. Your name stays on the group's records of check-outs, notes, tickets and
-photos, because they are the history of the group's equipment. An Admin can restore your access.</p>
+photos, because they are the history of the group's equipment. An Administrator can restore your access.</p>
 
 <h2>Questions</h2>
 <p>To ask about your data, {ask}.</p>

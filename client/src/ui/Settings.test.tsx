@@ -31,7 +31,7 @@ beforeEach(async () => {
 
 const mount = (over: Partial<typeof shell> = {}) => render(<Settings store={store} shell={{ ...shell, ...over }} />);
 
-test("an Admin sees every section, in order", () => {
+test("an Administrator sees every section, in order", () => {
   mount();
   const links = within(screen.getByRole("navigation", { name: "Settings" })).getAllByRole("button");
   expect(links.map((b) => b.textContent)).toEqual([

@@ -376,14 +376,23 @@ def create_app(
 
     Db = Annotated[sqlite3.Connection, Depends(db)]
 
-    def principal(request: Request, conn: Db) -> Principal:
+    def anyone(request: Request, conn: Db) -> Principal:
         p = authenticate(request, conn)
         if p is None:
             raise Unauthorized("sign in first")
         request.state.user_email = accounts.email_or_none(conn, p.user_id)
         return p
 
+    def principal(who: Annotated[Principal, Depends(anyone)]) -> Principal:
+        """Staff or an Administrator. Every route asks for this one unless it says otherwise, so a route
+        added later is closed to Outreach until someone opens it on purpose (FR-USR-39)."""
+        sync._require_staff(who)
+        return who
+
     Who = Annotated[Principal, Depends(principal)]
+    Anyone = Annotated[Principal, Depends(anyone)]
+    """Any signed-in account, Outreach too. Only for what a person does to their own account, and for
+    what Outreach is shown."""
 
     @app.middleware("http")
     async def log_access(request: Request, call_next: RequestResponseEndpoint) -> Response:
@@ -425,7 +434,7 @@ def create_app(
         """Try to mail a one-time link (FR-USR-15).
 
         Never fatal. The link is in the reply either way, so a wrong SMTP
-        password costs an Admin a copy and paste, not the invite (FR-USR-12).
+        password costs an Administrator a copy and paste, not the invite (FR-USR-12).
         """
         if link is None or not mail.configured(conn):
             return {"emailed": False}
@@ -501,7 +510,7 @@ def create_app(
         _require_active(_who)
         return stamped({"events": [asdict(e) for e in events.in_replay_order(conn, _entity_type(entity_type))]})
 
-    # --- audit (Admins) ------------------------------------------------------------
+    # --- audit (Administrators) ------------------------------------------------------------
 
     @app.get("/audit")
     def audit(
@@ -514,7 +523,7 @@ def create_app(
         last: Annotated[date | None, Query(alias="to")] = None,
         offset: Annotated[int, Query(ge=0)] = 0,
     ) -> dict[str, Any]:
-        """The whole log for an Admin, newest first, filtered (FR-USR-24).
+        """The whole log for an Administrator, newest first, filtered (FR-USR-24).
 
         `from` and `to` are calendar days where the group is, both inclusive.
         One page at a time: `more` says whether another follows this offset.
@@ -575,7 +584,7 @@ def create_app(
         return session_response(accounts.join(conn, body, now, client_of(request)))
 
     @app.post("/auth/sign-out")
-    def sign_out(request: Request, conn: Db, _who: Who) -> dict[str, Any]:
+    def sign_out(request: Request, conn: Db, _who: Anyone) -> dict[str, Any]:
         accounts.sign_out(conn, bearer(request) or "")
         return stamped({})
 
@@ -591,7 +600,7 @@ def create_app(
         device_id, session = accounts.connect_assistant(conn, who)
         return stamped({"token": session.token, "device_id": device_id, "path": assistant.MCP_PATH})
 
-    # --- users (Admins) ------------------------------------------------------------------
+    # --- users (Administrators) ------------------------------------------------------------------
 
     @app.get("/users")
     def users(conn: Db, who: Who) -> dict[str, Any]:
@@ -637,19 +646,19 @@ def create_app(
         return stamped({"token": token, **posted(conn, "reset", accounts.email_of(conn, user_id), link)})
 
     @app.get("/users/{user_id}/devices")
-    def devices(conn: Db, who: Who, user_id: str) -> dict[str, Any]:
+    def devices(conn: Db, who: Anyone, user_id: str) -> dict[str, Any]:
         return stamped({"devices": accounts.list_devices(conn, who, user_id)})
 
     @app.post("/users/{user_id}/devices/{device_id}/revoke")
-    def revoke_device(conn: Db, who: Who, user_id: str, device_id: str) -> dict[str, Any]:
+    def revoke_device(conn: Db, who: Anyone, user_id: str, device_id: str) -> dict[str, Any]:
         """One device, not the person (FR-USR-14).
 
-        Anyone can do it for their own account; an Admin, for anyone (FR-USR-17).
+        Anyone can do it for their own account; an Administrator, for anyone (FR-USR-17).
         """
         return stamped({"devices": accounts.revoke_device(conn, who, user_id, device_id)})
 
     @app.post("/me/deactivate")
-    def deactivate_self(request: Request, conn: Db, who: Who) -> dict[str, Any]:
+    def deactivate_self(request: Request, conn: Db, who: Anyone) -> dict[str, Any]:
         """Delete my account (FR-USR-25). Anyone signed in, for themself only."""
         accounts.deactivate_self(conn, who, bearer(request) or "")
         return stamped({})
@@ -667,7 +676,7 @@ def create_app(
         categories = notify.set_categories(conn, who.user_id, body)
         return stamped({"categories": categories, "mail_configured": mail.configured(conn)})
 
-    # --- join links (Admins) ---------------------------------------------------------------
+    # --- join links (Administrators) ---------------------------------------------------------------
 
     @app.post("/join-links")
     def create_join_link(conn: Db, who: Who, body: accounts.CreateJoinLink) -> dict[str, Any]:
@@ -692,7 +701,7 @@ def create_app(
         accounts.revoke_join_link(conn, who, link_id)
         return stamped({"links": accounts.list_join_links(conn, who)})
 
-    # --- mail (Admins) --------------------------------------------------------------------
+    # --- mail (Administrators) --------------------------------------------------------------------
 
     @app.get("/mail")
     def mail_settings(conn: Db, who: Who) -> dict[str, Any]:
@@ -714,18 +723,18 @@ def create_app(
 
     @app.post("/mail/test")
     def test_mail(conn: Db, who: Who) -> dict[str, Any]:
-        """To the Admin\'s own address, so a wrong password is found now rather than at a reset (FR-USR-16)."""
+        """To the Administrator\'s own address, so a wrong password is found now rather than at a reset (FR-USR-16)."""
         accounts._require_admin(who)
         to = accounts.email_of(conn, who.user_id)
         subject, body = mail.test_message(group_name(conn))
         mail.send(conn, to, subject, body)
         return stamped({"sent_to": to})
 
-    # --- calendars (Admins) ---------------------------------------------------------------
+    # --- calendars (Administrators) ---------------------------------------------------------------
 
     @app.get("/calendars")
     def list_calendars(conn: Db, who: Who) -> dict[str, Any]:
-        """Feeds an Admin has added, with a redacted URL (FR-RES-20, NFR-SEC-10)."""
+        """Feeds an Administrator has added, with a redacted URL (FR-RES-20, NFR-SEC-10)."""
         accounts._require_admin(who)
         return stamped({"feeds": calendars.list_feeds(conn)})
 
@@ -751,7 +760,7 @@ def create_app(
 
     @app.post("/codes/sheets")
     def code_sheets(conn: Db, who: Who, body: SheetRequest) -> Response:
-        """Print a batch of unassigned codes (FR-TAG-02). Admins only."""
+        """Print a batch of unassigned codes (FR-TAG-02). Administrators only."""
         accounts._require_admin(who)
         group = derived.get_entity(conn, "setting", "group") or {}
         if not group.get("name") or not group.get("code_url") or not group.get("contact"):
@@ -863,6 +872,35 @@ def create_app(
             path, media_type=photo_files.content_type_of(path), headers={"Cache-Control": "private, max-age=300"}
         )
 
+    # --- outreach ------------------------------------------------------------------------
+
+    @app.get("/outreach/items")
+    def outreach_items(conn: Db, who: Anyone) -> dict[str, Any]:
+        """What Outreach may see, made here on each call (FR-VIS-03). An Outreach device is never sent
+        the log, so it holds nothing it was not shown. Staff may read it too, to see what Outreach sees."""
+        _require_active(who)
+        now = now_ms()
+        state = derived.snapshot(conn)
+        group = views.entity(state, "setting", "group") or {}
+        return stamped(
+            {
+                "group": {"name": group.get("name", ""), "contact": group.get("contact", "")},
+                "items": views.outreach_items(state, views.today(now)),
+            }
+        )
+
+    @app.get("/outreach/photos/{photo_id}")
+    def outreach_photo(conn: Db, who: Anyone, photo_id: str) -> FileResponse:
+        """A photo of something Outreach is shown, and no other photo (FR-VIS-09)."""
+        _require_active(who)
+        if not is_ulid(photo_id):
+            raise BadRequest("photo_id must be a ULID")
+        listed = views.outreach_items(derived.snapshot(conn), views.today(now_ms()))
+        path = photo_files.path_of(photo_dir, photo_id) if any(photo_id in row["photos"] for row in listed) else None
+        if path is None:
+            raise NotFound("no such photo")
+        return FileResponse(path, media_type=photo_files.content_type_of(path), headers={"Cache-Control": "no-store"})
+
     @app.get("/privacy", include_in_schema=False)
     def privacy_policy(conn: Db) -> HTMLResponse:
         """The privacy policy, with no sign-in (FR-PUB-07). The contact is the address the group's mail is sent from."""
@@ -925,7 +963,7 @@ def create_app(
 
     @app.post("/inventory/import/preview")
     async def preview_import(conn: Db, who: Who, request: Request) -> dict[str, Any]:
-        """What a file would do, without writing it (FR-SET-11). Admins only."""
+        """What a file would do, without writing it (FR-SET-11). Administrators only."""
         accounts._require_admin(who)
         body = await request.body()
         if not body:
@@ -935,7 +973,7 @@ def create_app(
 
     @app.post("/inventory/import")
     async def do_import(conn: Db, who: Who, request: Request) -> dict[str, Any]:
-        """Write a file's adds and changes as the Admin who ran it (FR-SET-11)."""
+        """Write a file's adds and changes as the Administrator who ran it (FR-SET-11)."""
         accounts._require_admin(who)
         body = await request.body()
         if not body:

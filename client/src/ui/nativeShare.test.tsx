@@ -16,7 +16,10 @@ const api = createApi({
   fetch: async (input) => {
     const path = new URL(String(input), "http://x").pathname;
     if (path === "/inventory.csv") return new Response("id,kind,name\n", { status: 200 });
-    if (path === "/codes/sheets") return new Response(new Blob(["%PDF"], { type: "application/pdf" }), { status: 200 });
+    if (path === "/codes/sheets")
+      return new Response(new Blob(["%PDF"], { type: "application/pdf" }), {
+        status: 200,
+      });
     return new Response("{}", { status: 404 });
   },
 });
@@ -74,6 +77,7 @@ const LINK: CreatedJoinLink = {
   created_by_name: "Alex",
   created_at: T0,
   expires_at: null,
+  role: "user",
   token: "t",
   url: "https://example.org/gear/join?link=t",
   qr_svg: "<svg></svg>",
@@ -89,7 +93,9 @@ test("the app prints a join link through its plugin", async () => {
 });
 
 test("a print the app cannot do is shown, not dropped", async () => {
-  vi.stubGlobal("Capacitor", { nativePromise: async () => Promise.reject(new Error("Printing is not available")) });
+  vi.stubGlobal("Capacitor", {
+    nativePromise: async () => Promise.reject(new Error("Printing is not available")),
+  });
   render(<PrintableJoinLink group="10th" link={LINK} onDone={() => {}} native />);
   await userEvent.click(screen.getByRole("button", { name: "Print" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Printing is not available");

@@ -846,7 +846,7 @@ def append(conn: sqlite3.Connection, incoming: Any, received_at: int | None = No
     if received_at is None:
         received_at = now_ms()
 
-    # Inside a caller's transaction (a CSV import, an Admin change guarded by a count) this
+    # Inside a caller's transaction (a CSV import, an Administrator change guarded by a count) this
     # becomes a savepoint, so the caller's COMMIT or ROLLBACK decides for every event at once.
     nested = conn.in_transaction
     conn.execute("SAVEPOINT append_event" if nested else "BEGIN IMMEDIATE")
@@ -910,7 +910,7 @@ def append(conn: sqlite3.Connection, incoming: Any, received_at: int | None = No
 
 
 SERVER_DEVICE = "server"
-"""device_id for events the server originates itself, such as an Admin inviting a user."""
+"""device_id for events the server originates itself, such as an Administrator inviting a user."""
 
 
 def append_server(
@@ -1031,7 +1031,7 @@ def audit(
     limit: int = 100,
     offset: int = 0,
 ) -> list[Event]:
-    """The whole log, newest first, narrowed to what an Admin asked for (FR-USR-24).
+    """The whole log, newest first, narrowed to what an Administrator asked for (FR-USR-24).
 
     `start` and `end` bound `effective_at`, half-open, so a day range built by
     localtime.day_span does not drop the last day. The order is replay order

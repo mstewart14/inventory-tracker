@@ -1023,6 +1023,33 @@ User changes come only through the accounts API, never as events pushed from a d
 (FR-USR-03) and the role check live, and it is why they hold. Events the server originates carry `device_id = "server"`
 and their own `device_seq`, under the same rules as any phone.
 
+### Roles
+
+Three roles (FR-USR-36). The stored words are older than the names people see: `admin` is an Administrator, `user` is
+Staff, `outreach` is Outreach. `ROLE_NAMES` in `accounts.py` and `roles.ts` hold the names.
+
+Staff and Administrators are the society. Their devices sync the whole log, as before. Outreach is a worker from another
+organization, and the log holds every item, hold and person, so an Outreach account is kept off it entirely rather than
+sent a filtered copy:
+
+- `sync.bootstrap`, `pull` and `push` refuse the role (`sync._require_staff`).
+- In `app.py` the ordinary `Who` dependency refuses it too. A route opens to Outreach only by asking for `Anyone`
+  instead, so a route added later is closed until someone opens it on purpose. `tests/test_outreach.py` walks every
+  route and holds the list of open ones (FR-USR-46).
+- The `/mcp` endpoint and `connect_assistant` refuse it (FR-MCP-72).
+- Category mail skips it (FR-USR-44).
+
+What Outreach does see is made by the server on each call: `GET /outreach/items` returns `views.outreach_items`, the
+items marked Outreach or Public that have something free, each with its location's name and its free count (FR-VIS-09).
+The shelf within the location is left out, and so is the name of a person an item is kept by (FR-VIS-27).
+`GET /outreach/photos/{id}` serves a photo only while its item is on that list. The client shows `Outreach.tsx` and
+nothing else, and never calls sync.
+
+A device may have been Staff before. `set_role` ends every session when a role moves into or out of Outreach
+(FR-USR-42), so the person signs in again and `meta.user.role` is fresh. When the app finds itself signed in as Outreach
+with data on the device, `Store.forget` clears the snapshot, every event, queued photos and hold handles (FR-USR-43).
+Unsent work on that device is lost with it.
+
 ## Assistant access (MCP)
 
 The MCP server is the same FastAPI process, answering at `/mcp` over Streamable HTTP, using the official Python SDK,

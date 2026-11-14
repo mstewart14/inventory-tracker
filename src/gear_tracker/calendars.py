@@ -1,6 +1,6 @@
-"""Calendar feeds an Admin points at the group's own calendar (FR-RES-20).
+"""Calendar feeds an Administrator points at the group's own calendar (FR-RES-20).
 
-The group's events live in a handful of ICS feeds. An Admin pastes the feed
+The group's events live in a handful of ICS feeds. An Administrator pastes the feed
 URLs in here; the server fetches and parses them, keeping only events from
 7 days ago to 180 days ahead, and ships the names and dates to every device
 through sync so the reservation form and a scanning session can suggest them
@@ -10,7 +10,7 @@ server owns, the same shape as the mail settings.
 A feed's URL can carry a private token (a "secret address" a calendar
 provider hands out). Like the mail password (mail.py, migration 0006), it
 lives only in the `calendar_feeds` table, is never written to the event log,
-and is never sent to a device (NFR-SEC-10). An Admin is shown it redacted to
+and is never sent to a device (NFR-SEC-10). An Administrator is shown it redacted to
 host and path.
 
 Refreshed hourly from a background thread started with the app
@@ -45,7 +45,7 @@ from gear_tracker.ulid import new_ulid
 logger = logging.getLogger(__name__)
 
 TIMEOUT_S = 15
-"""An Admin, or the refresh thread, is waiting; better a clear failure than a hang (mirrors mail.TIMEOUT_S)."""
+"""An Administrator, or the refresh thread, is waiting; better a clear failure than a hang (mirrors mail.TIMEOUT_S)."""
 
 LOOKBACK_DAYS = 7
 LOOKAHEAD_DAYS = 180
@@ -84,7 +84,7 @@ def list_feeds(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 
 
 def add_feed(conn: sqlite3.Connection, body: FeedInput, now: int | None = None) -> dict[str, Any]:
-    """Add a feed and fetch it once right away, so an Admin sees at a glance whether the URL works."""
+    """Add a feed and fetch it once right away, so an Administrator sees at a glance whether the URL works."""
     now = now_ms() if now is None else now
     feed_id = new_ulid(now)
     conn.execute(

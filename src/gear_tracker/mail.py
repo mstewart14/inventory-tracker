@@ -4,7 +4,7 @@ Optional by design. With nothing configured the server sends nothing and the
 link is still shown to copy, which is how the group worked before this existed
 (FR-USR-12). Nothing else in the app depends on mail working.
 
-One SMTP account, filled in by an Admin: a provider's ordinary mailbox with an
+One SMTP account, filled in by an Administrator: a provider's ordinary mailbox with an
 app password is enough, and costs nothing to run (NFR-DEP-04). The password is
 the one secret here that cannot be hashed, because SMTP AUTH needs it in the
 clear. It lives in a server-only table and never reaches a device.
@@ -33,7 +33,7 @@ Address = Annotated[EmailStr, StringConstraints(max_length=254)]
 
 
 class MailSettings(Strict):
-    """What an Admin fills in. Blank password means "keep the stored one", so it is never sent back out."""
+    """What an Administrator fills in. Blank password means "keep the stored one", so it is never sent back out."""
 
     host: NonEmpty
     port: Annotated[int, Field(ge=1, le=65535)] = 465
@@ -49,7 +49,7 @@ def get(conn: sqlite3.Connection) -> dict[str, Any] | None:
 
 
 def describe(conn: sqlite3.Connection) -> dict[str, Any] | None:
-    """What an Admin may read back: everything but the password."""
+    """What an Administrator may read back: everything but the password."""
     row = get(conn)
     if row is None:
         return None

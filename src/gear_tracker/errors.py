@@ -29,7 +29,7 @@ class InviteUsed(Unauthorized):
 
 
 class ResetUsed(Unauthorized):
-    """A reset link that already worked. There is no self-service retry; an Admin issues a new one."""
+    """A reset link that already worked. There is no self-service retry; an Administrator issues a new one."""
 
     code = "reset_used"
 

@@ -11,14 +11,14 @@ interface Props {
   shell: Shell;
 }
 
-/** A sheet of unassigned codes on label sheets. Admin only (S-BOOT-02). */
+/** A sheet of unassigned codes on label sheets. Administrator only (S-BOOT-02). */
 export function SettingsCodes({ store, api, shell }: Props) {
   useStore(store);
 
   if (!store.admin) {
     return (
       <Page title="Not found" back="/settings">
-        <p>Admins only.</p>
+        <p>Administrators only.</p>
       </Page>
     );
   }

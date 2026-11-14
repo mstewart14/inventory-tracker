@@ -26,15 +26,15 @@ the event layer refuses it.
 `get_item` on a pool reports owned, in, missing and out by holder in place of units and a code
 (FR-INV-36, FR-MCP-08).
 
-**An Admin's token unlocks an Admin's work** (FR-MCP-10): users, standing join links, mail, group
+**An Administrator's token unlocks an Administrator's work** (FR-MCP-10): users, standing join links, mail, group
 settings, calendar feeds, locations, categories (adding one is anyone's job), printed codes,
 CSV export and import, deleting an item, and merging or unmerging duplicates. Every one of those tools calls
 the same accounts.py, mail.py, codes.py or inventory_csv.py function the app's
-own endpoint calls, so a User's token is refused the same way the app refuses
-a User: `accounts._require_admin` where the app checks it that way, and the
+own endpoint calls, so a Staff member's token is refused the same way the app refuses
+a Staff member: `accounts._require_admin` where the app checks it that way, and the
 same server- or client-side rule mirrored in the tool where the app only
 checks it in the browser (locations, categories, merge, unmerge, delete).
-Unassigning a code (FR-MCP-09) is a User's job on any token, so
+Unassigning a code (FR-MCP-09) is a Staff member's job on any token, so
 `unassign_code` sits with the rest of the User tools below.
 
 **What the app does, the assistant does** (FR-MCP-11 to FR-MCP-30), except delete the
@@ -111,9 +111,9 @@ and what needs fixing. Search before you write, and use the ids the read tools
 return. Everything you write is recorded as the signed-in person, through the
 assistant. Users, standing join links, mail, group settings, calendar feeds, locations, renaming or deleting
 categories, printed codes, CSV import, deleting an item, and merging duplicates
-are an Admin's job in the app, and are here too when the signed-in person is an Admin; a User's token is
-refused the same way the app refuses a User. A pool is gear kept as a counted stack, not named
-units; check_out, check_in, recount, mark_pool_missing, mark_pool_found and
+are an Administrator's job in the app, and are here too when the signed-in person is an Administrator; a
+Staff member's token is refused the same way the app refuses a Staff member. A pool is gear kept as a
+counted stack, not named units; check_out, check_in, recount, mark_pool_missing, mark_pool_found and
 write_off_pool move it by count. A planned event in the app is a reservation here; `event` is its name.
 Everything else a person does in the app is here too,
 except deleting their own account."""
@@ -640,7 +640,8 @@ def list_repairs(open_only: StrictBool = True) -> dict[str, Any]:
 
 
 def list_locations() -> dict[str, Any]:
-    """Where gear lives. An Admin edits these in the app; here they are only for searching and for a new item."""
+    """Where gear lives. An Administrator edits these in the app; here they are only for searching and for a
+    new item."""
     with _open() as (conn, _who):
         state = _state(conn)
         return {
@@ -663,7 +664,7 @@ def list_locations() -> dict[str, Any]:
 
 
 def list_categories() -> dict[str, Any]:
-    """How gear is grouped: tents, stoves, tarps. An Admin edits these in the app; here they are for a new item
+    """How gear is grouped: tents, stoves, tarps. An Administrator edits these in the app; here they are for a new item
     or an edit."""
     with _open() as (conn, _who):
         state = _state(conn)
@@ -1244,7 +1245,7 @@ def unassign_code(item_id: str) -> dict[str, Any]:
 
 
 def delete_item(item_id: str) -> dict[str, Any]:
-    """Take a record made in error off every list, for good (FR-INV-32). Admins only.
+    """Take a record made in error off every list, for good (FR-INV-32). Administrators only.
 
     Only an item with nothing out, and a generic only once it has no units. Retire is
     for gear written off; this is for a duplicate that was never real. Its codes go back
@@ -1270,7 +1271,7 @@ def delete_item(item_id: str) -> dict[str, Any]:
 
 
 def merge_items(duplicate_id: str, survivor_id: str) -> dict[str, Any]:
-    """Fold a duplicate record into the item it doubles (FR-INV-13). Admins only.
+    """Fold a duplicate record into the item it doubles (FR-INV-13). Administrators only.
 
     The duplicate points at the survivor; nothing is rewritten. The duplicate
     must be a single item or unit that is in, and the survivor a single item or
@@ -1300,7 +1301,7 @@ def merge_items(duplicate_id: str, survivor_id: str) -> dict[str, Any]:
 
 
 def unmerge_item(item_id: str) -> dict[str, Any]:
-    """Undo a merge (FR-INV-13). The item stands on its own again. Admins only."""
+    """Undo a merge (FR-INV-13). The item stands on its own again. Administrators only."""
     with _open() as (conn, who):
         accounts._require_admin(who)
         state = _state(conn)
@@ -1675,7 +1676,7 @@ def comment_ticket(ticket_id: str, text: str) -> dict[str, Any]:
 
 def delete_ticket(ticket_id: str) -> dict[str, Any]:
     """Take a ticket off every list, for good (FR-REP-10). A User deletes only a ticket they raised
-    that nobody else has commented on, photographed or moved; an Admin deletes any."""
+    that nobody else has commented on, photographed or moved; an Administrator deletes any."""
     with _open() as (conn, who):
         ticket = _ticket(_state(conn), ticket_id)
         gone = {"field": "deleted", "value": True, "old": None}
@@ -1759,7 +1760,7 @@ def get_notifications() -> dict[str, Any]:
 
 def set_notifications(categories: notify.Preferences) -> dict[str, Any]:
     """Choose what the signed-in person is emailed about (FR-USR-18): found reports, new repair tickets,
-    new accounts. Nothing is sent until an Admin sets mail up."""
+    new accounts. Nothing is sent until an Administrator sets mail up."""
     with _open() as (conn, who):
         saved = notify.set_categories(conn, who.user_id, categories)
         return {"categories": saved, "mail_configured": mail.configured(conn)}
@@ -2127,6 +2128,15 @@ def public_catalogue() -> dict[str, Any]:
     a mark has made public. An item joins or leaves it through `update_item`'s `visibility`."""
     with _open() as (conn, _who):
         rows = views.catalogue(_state(conn), views.today(now_ms()))
+        return {"items": rows, "count": len(rows)}
+
+
+def outreach_view() -> dict[str, Any]:
+    """What an Outreach worker is shown right now (FR-VIS-02): the items marked for Outreach or the public
+    that have something free, each with where it is kept and how many could be asked for (FR-VIS-09).
+    Goods on a hold are left out of the count. Use it to check what a mark has shown another organization."""
+    with _open() as (conn, _who):
+        rows = views.outreach_items(_state(conn), views.today(now_ms()))
         return {"items": rows, "count": len(rows)}
 
 
@@ -2685,9 +2695,9 @@ def stock_check(location_id: str, seen: list[str], sub_location: str | None = No
 
 # --- admin tools (FR-MCP-10) -------------------------------------------------------------------------
 #
-# Everything below is refused for a User's token. Most of it calls accounts._require_admin, the same
-# function the app's own endpoints call, for the same "Admins only" the app gives. Locations, categories,
-# and group settings are events a device could in principle push; the app keeps them to Admins only in
+# Everything below is refused for a Staff member's token. Most of it calls accounts._require_admin, the same
+# function the app's own endpoints call, for the same "Administrators only" the app gives. Locations, categories,
+# and group settings are events a device could in principle push; the app keeps them to Administrators only in
 # the browser (settings are also checked at the sync layer for `setting`, not for `location`/`category`),
 # so the same accounts._require_admin call stands in for that check here too.
 
@@ -2727,7 +2737,7 @@ def _user_brief(u: dict[str, Any]) -> dict[str, Any]:
 
 def list_users() -> dict[str, Any]:
     """Every account: name, email, role, whether it is active (FR-USR-04), and when a sign-in lock
-    ends (`locked_until`, ms, or null when not locked). Admins only."""
+    ends (`locked_until`, ms, or null when not locked). Administrators only."""
     with _open() as (conn, who):
         accounts._require_admin(who)
         return {
@@ -2744,14 +2754,14 @@ def list_users() -> dict[str, Any]:
 
 
 def invite_user(name: str, email: str, role: accounts.Role = "user") -> dict[str, Any]:
-    """Add a person and hand back a one-time link to set a password (FR-USR-04, FR-USR-12). Admins only."""
+    """Add a person and hand back a one-time link to set a password (FR-USR-04, FR-USR-12). Administrators only."""
     with _open() as (conn, who):
         user_id, token = accounts.invite(conn, who, accounts.Invite(name=name, email=email, role=role))
         return _link(conn, _state(conn), "invite", email, user_id, token)
 
 
 def reset_link(user_id: str) -> dict[str, Any]:
-    """A fresh one-time link to set a new password (FR-USR-12). Admins only."""
+    """A fresh one-time link to set a new password (FR-USR-12). Administrators only."""
     with _open() as (conn, who):
         token = accounts.reset_link(conn, who, user_id)
         return _link(conn, _state(conn), "reset", accounts.email_of(conn, user_id), user_id, token)
@@ -2760,8 +2770,8 @@ def reset_link(user_id: str) -> dict[str, Any]:
 def set_user_active(user_id: str, active: StrictBool) -> dict[str, Any]:
     """Deactivate or reactivate an account (FR-USR-04).
 
-    You cannot deactivate your own account (FR-USR-23), and the last Admin cannot be
-    deactivated (FR-USR-03). Admins only.
+    You cannot deactivate your own account (FR-USR-23), and the last Administrator cannot be
+    deactivated (FR-USR-03). Administrators only.
     """
     with _open() as (conn, who):
         if active:
@@ -2772,22 +2782,24 @@ def set_user_active(user_id: str, active: StrictBool) -> dict[str, Any]:
 
 
 def unlock_user(user_id: str) -> dict[str, Any]:
-    """End a sign-in lock early, after too many wrong passwords (FR-USR-29). Admins only."""
+    """End a sign-in lock early, after too many wrong passwords (FR-USR-29). Administrators only."""
     with _open() as (conn, who):
         accounts.unlock(conn, who, user_id)
         return {"user": _user_brief(accounts.get_user(conn, user_id))}
 
 
 def set_user_role(user_id: str, role: accounts.Role) -> dict[str, Any]:
-    """Change a person's role. You cannot drop your own Admin role (FR-USR-22), and the last Admin
-    cannot be demoted (FR-USR-03). Admins only."""
+    """Change a person's role: `admin` is an Administrator, `user` is Staff, `outreach` is a worker from
+    another organization (FR-USR-36). A move into or out of Outreach signs the person out everywhere
+    (FR-USR-42). You cannot drop your own Administrator role (FR-USR-22), and the last Administrator
+    cannot be demoted (FR-USR-03). Administrators only."""
     with _open() as (conn, who):
         accounts.set_role(conn, who, user_id, role)
         return {"user": _user_brief(accounts.get_user(conn, user_id))}
 
 
 def update_user(user_id: str, fields: accounts.UserEdit) -> dict[str, Any]:
-    """Fix a person's name, email, or both (FR-USR-04). Give only what changes. Admins only."""
+    """Fix a person's name, email, or both (FR-USR-04). Give only what changes. Administrators only."""
     with _open() as (conn, who):
         accounts.edit_user(conn, who, user_id, fields)
         return {"user": {**_user_brief(accounts.get_user(conn, user_id)), "email": accounts.email_of(conn, user_id)}}
@@ -2796,7 +2808,7 @@ def update_user(user_id: str, fields: accounts.UserEdit) -> dict[str, Any]:
 def list_devices(user_id: str) -> dict[str, Any]:
     """The devices one account is signed in on (FR-USR-14), last seen first: each one's label, such as
     "Safari on iPhone", its client version, when it signed in and when it was last seen (ms). A null
-    label or version is unknown; an assistant has neither. Your own always; anyone's if you are an Admin."""
+    label or version is unknown; an assistant has neither. Your own always; anyone's if you are an Administrator."""
     with _open() as (conn, who):
         return {"devices": accounts.list_devices(conn, who, user_id)}
 
@@ -2806,14 +2818,14 @@ def client_versions() -> dict[str, Any]:
     last seen (ms).
     A null version is a device not seen since versions were recorded, or a client too old to send one.
     Assistants are left out.
-    Admins only (NFR-DEP-16)."""
+    Administrators only (NFR-DEP-16)."""
     with _open() as (conn, who):
         return {"versions": accounts.client_versions(conn, who)}
 
 
 def revoke_device(user_id: str, device_id: str) -> dict[str, Any]:
     """Sign one device out, without touching the rest of the account (FR-USR-14). Your own always; anyone's if
-    you are an Admin."""
+    you are an Administrator."""
     with _open() as (conn, who):
         return {"devices": accounts.revoke_device(conn, who, user_id, device_id)}
 
@@ -2830,43 +2842,51 @@ def _join_link_response(state: dict[str, Any], made: dict[str, Any]) -> dict[str
 
 
 def create_join_link(
-    expiry_days: accounts.JoinLinkExpiryDays = 7, label: accounts.JoinLinkLabel = ""
+    expiry_days: accounts.JoinLinkExpiryDays = 7,
+    label: accounts.JoinLinkLabel = "",
+    role: accounts.JoinLinkRole = "user",
 ) -> dict[str, Any]:
     """A standing link and its QR, for a room of volunteers to make their own accounts at once
     (FR-USR-19). Good for 1, 7 (the default) or 30 days, or pass null for one that never expires,
-    until revoked. Admins only.
+    until revoked. Administrators only.
 
     `label` says what the link is for, since the token is shown only here and a list of live
     links is otherwise told apart only by who made each one and when (FR-USR-21).
+
+    `role` is what each account made from the link gets (FR-USR-40): `user` for Staff, the default,
+    or `outreach` for workers from another organization. A link never makes an Administrator.
     """
     with _open() as (conn, who):
-        made = accounts.create_join_link(conn, who, accounts.CreateJoinLink(expiry_days=expiry_days, label=label))
+        made = accounts.create_join_link(
+            conn, who, accounts.CreateJoinLink(expiry_days=expiry_days, label=label, role=role)
+        )
         return _join_link_response(_state(conn), made)
 
 
 def list_join_links() -> dict[str, Any]:
-    """Every live standing join link: its label, who made it, when, and when it expires (FR-USR-19). Admins only."""
+    """Every live standing join link: its label, the role it gives, who made it, when, and when it expires
+    (FR-USR-19). Administrators only."""
     with _open() as (conn, who):
         return {"links": accounts.list_join_links(conn, who)}
 
 
 def rename_join_link(link_id: str, label: accounts.JoinLinkLabel = "") -> dict[str, Any]:
     """Label a standing join link, or change the label it has (FR-USR-21). Pass an empty label to
-    clear it. The link itself is unchanged: what was printed or passed around still works. Admins only."""
+    clear it. The link itself is unchanged: what was printed or passed around still works. Administrators only."""
     with _open() as (conn, who):
         accounts.rename_join_link(conn, who, link_id, label)
         return {"links": accounts.list_join_links(conn, who)}
 
 
 def revoke_join_link(link_id: str) -> dict[str, Any]:
-    """End a standing join link before its expiry (FR-USR-19). Admins only."""
+    """End a standing join link before its expiry (FR-USR-19). Administrators only."""
     with _open() as (conn, who):
         accounts.revoke_join_link(conn, who, link_id)
         return {"links": accounts.list_join_links(conn, who)}
 
 
 def get_mail() -> dict[str, Any]:
-    """The server's SMTP account, without the password (FR-USR-15). Admins only."""
+    """The server's SMTP account, without the password (FR-USR-15). Administrators only."""
     with _open() as (conn, who):
         accounts._require_admin(who)
         return {"mail": mail.describe(conn)}
@@ -2880,7 +2900,8 @@ def set_mail(
     username: str = "",
     password: str = "",
 ) -> dict[str, Any]:
-    """Save the SMTP account an Admin fills in (FR-USR-15). A blank password keeps the one stored. Admins only."""
+    """Save the SMTP account an Administrator fills in (FR-USR-15). A blank password keeps the one stored.
+    Administrators only."""
     with _open() as (conn, who):
         accounts._require_admin(who)
         settings = mail.MailSettings(
@@ -2891,7 +2912,7 @@ def set_mail(
 
 
 def clear_mail() -> dict[str, Any]:
-    """Stop sending mail. Links go back to being copied by hand (FR-USR-12). Admins only."""
+    """Stop sending mail. Links go back to being copied by hand (FR-USR-12). Administrators only."""
     with _open() as (conn, who):
         accounts._require_admin(who)
         mail.forget(conn)
@@ -2900,7 +2921,7 @@ def clear_mail() -> dict[str, Any]:
 
 def send_test_mail() -> dict[str, Any]:
     """Send a test message to your own address, to find a wrong password before someone else's reset needs it
-    (FR-USR-16). Admins only."""
+    (FR-USR-16). Administrators only."""
     with _open() as (conn, who):
         accounts._require_admin(who)
         to = accounts.email_of(conn, who.user_id)
@@ -2939,7 +2960,7 @@ def set_group(fields: GroupFields) -> dict[str, Any]:
     """Change the group's name, site address, contact, overdue threshold, or iPhone app link (FR-USR-15,
     FR-PUB-01, FR-TAG-02, NFR-DEP-12).
 
-    The server refuses anyone but an Admin, the same way it refuses a device
+    The server refuses anyone but an Administrator, the same way it refuses a device
     that pushes a setting event.
     """
     with _open() as (conn, who):
@@ -2961,14 +2982,14 @@ def set_group(fields: GroupFields) -> dict[str, Any]:
 
 
 def list_calendar_feeds() -> dict[str, Any]:
-    """Feeds an Admin has added, with a redacted URL (FR-RES-20, NFR-SEC-10). Admins only."""
+    """Feeds an Administrator has added, with a redacted URL (FR-RES-20, NFR-SEC-10). Administrators only."""
     with _open() as (conn, who):
         accounts._require_admin(who)
         return {"feeds": calendars.list_feeds(conn)}
 
 
 def add_calendar_feed(url: calendars.FeedUrl, label: calendars.FeedLabel = "") -> dict[str, Any]:
-    """Add an ICS feed and fetch it once right away, so a bad URL shows up immediately (FR-RES-20). Admins only.
+    """Add an ICS feed and fetch it once right away, so a bad URL shows up immediately (FR-RES-20). Administrators only.
 
     The URL is checked in the argument model, so a refused one keeps its reason (see `_reported`).
     """
@@ -2978,7 +2999,7 @@ def add_calendar_feed(url: calendars.FeedUrl, label: calendars.FeedLabel = "") -
 
 
 def remove_calendar_feed(feed_id: str) -> dict[str, Any]:
-    """Admins only."""
+    """Administrators only."""
     with _open() as (conn, who):
         accounts._require_admin(who)
         calendars.remove_feed(conn, feed_id)
@@ -2986,14 +3007,14 @@ def remove_calendar_feed(feed_id: str) -> dict[str, Any]:
 
 
 def refresh_calendar_feeds() -> dict[str, Any]:
-    """Fetch every feed again now, instead of waiting for the hourly refresh (FR-RES-20). Admins only."""
+    """Fetch every feed again now, instead of waiting for the hourly refresh (FR-RES-20). Administrators only."""
     with _open() as (conn, who):
         accounts._require_admin(who)
         return {"feeds": calendars.refresh_all(conn)}
 
 
 def add_location(name: str) -> dict[str, Any]:
-    """Add a place gear can call home (FR-SET-02). Admins only."""
+    """Add a place gear can call home (FR-SET-02). Administrators only."""
     with _open() as (conn, who):
         accounts._require_admin(who)
         if not name.strip():
@@ -3004,7 +3025,7 @@ def add_location(name: str) -> dict[str, Any]:
 
 
 def rename_location(location_id: str, name: str) -> dict[str, Any]:
-    """Admins only."""
+    """Administrators only."""
     with _open() as (conn, who):
         accounts._require_admin(who)
         state = _state(conn)
@@ -3022,7 +3043,7 @@ def rename_location(location_id: str, name: str) -> dict[str, Any]:
 
 
 def delete_location(location_id: str) -> dict[str, Any]:
-    """Blocked while any item points at it; the error names them (FR-SET-05). Admins only."""
+    """Blocked while any item points at it; the error names them (FR-SET-05). Administrators only."""
     with _open() as (conn, who):
         accounts._require_admin(who)
         state = _state(conn)
@@ -3057,7 +3078,7 @@ def add_category(name: str) -> dict[str, Any]:
 
 
 def rename_category(category_id: str, name: str) -> dict[str, Any]:
-    """Admins only."""
+    """Administrators only."""
     with _open() as (conn, who):
         accounts._require_admin(who)
         state = _state(conn)
@@ -3076,7 +3097,7 @@ def rename_category(category_id: str, name: str) -> dict[str, Any]:
 
 def delete_category(category_id: str) -> dict[str, Any]:
     """Deletes it even when in use; the items filed under it lose it and are listed in
-    `removed_from` (FR-SET-12). Admins only."""
+    `removed_from` (FR-SET-12). Administrators only."""
     with _open() as (conn, who):
         accounts._require_admin(who)
         state = _state(conn)
@@ -3097,7 +3118,7 @@ def delete_category(category_id: str) -> dict[str, Any]:
 
 
 def print_codes(sheets: StrictInt = 1, layout: labels.LayoutName = "standard") -> dict[str, Any]:
-    """A PDF of fresh unassigned codes, laid out for label sheets (FR-TAG-02). Admins only.
+    """A PDF of fresh unassigned codes, laid out for label sheets (FR-TAG-02). Administrators only.
 
     `sheets` is 1 to 10. `layout` is `standard` (32 per sheet, 1.75 x 1.25 in) or `cards`
     (12 per page, to cut out and laminate).
@@ -3126,14 +3147,15 @@ def export_csv() -> dict[str, Any]:
 
 
 def preview_csv_import(text: str) -> dict[str, Any]:
-    """What an import would do, without writing it: rows to add or change, and any errors (FR-SET-11). Admins only."""
+    """What an import would do, without writing it: rows to add or change, and any errors (FR-SET-11).
+    Administrators only."""
     with _open() as (conn, who):
         accounts._require_admin(who)
         return inventory_csv.plan(_state(conn), text).summary()
 
 
 def apply_csv_import(text: str) -> dict[str, Any]:
-    """Write a file's adds and changes, as the Admin who ran it (FR-SET-11). Admins only.
+    """Write a file's adds and changes, as the Administrator who ran it (FR-SET-11). Administrators only.
 
     All or nothing: call preview_csv_import first, since one bad row stops the whole file.
     """
@@ -3150,7 +3172,7 @@ def read_audit_log(
     to_day: datetime.date | None = None,
     offset: Annotated[StrictInt, Field(ge=0)] = 0,
 ) -> dict[str, Any]:
-    """The whole log, newest first, as the app's audit screen shows it (FR-USR-24). Admins only.
+    """The whole log, newest first, as the app's audit screen shows it (FR-USR-24). Administrators only.
 
     Narrow by event `type`, by the person who did it (`person_id`, from list_users), by `entity_type`,
     and by days where the group is, both inclusive. One page at a time; `more` says whether to call
@@ -3234,6 +3256,7 @@ TOOLS = [
     hand_out,
     receive,
     public_catalogue,
+    outreach_view,
     list_holds,
     place_hold,
     extend_hold,
@@ -3292,9 +3315,9 @@ TOOLS = [
     apply_csv_import,
     read_audit_log,
 ]
-"""Everything an assistant can do. What a User can do in the app, and what an Admin can do when the token's owner
-is an Admin (FR-MCP-10); a User's token is refused the tools below the movement tools the same way the app refuses
-a User."""
+"""Everything an assistant can do. What a Staff member can do in the app, and what an Administrator can do when
+the token's owner is an Administrator (FR-MCP-10); a Staff member's token is refused the tools below the movement
+tools the same way the app refuses a Staff member. An Outreach account has no assistant at all (FR-MCP-72)."""
 
 
 # --- the server ---------------------------------------------------------------------------------------
@@ -3385,6 +3408,10 @@ class Endpoint:
         if not who.active:
             # A revoked token is already gone; this is the account itself (NFR-SEC-07).
             await _refuse(403, "deactivated", "this account has been deactivated")(scope, receive, send)
+            return
+        if who.role == "outreach":
+            # The tools read and write the whole inventory, and Outreach sees a part of it (FR-USR-39).
+            await _refuse(403, "forbidden", "Outreach accounts cannot use an assistant")(scope, receive, send)
             return
         if not who.device_id.startswith(accounts.ASSISTANT_PREFIX):
             # A signed-in device keeps its own device_seq; the server keeps an assistant's. One

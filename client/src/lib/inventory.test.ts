@@ -635,7 +635,7 @@ test("a merge follows a chain, and refuses a loop", async () => {
   await expect(act.mergeItem(store, f.t2, f.t1)).rejects.toThrow("already merged");
 });
 
-test("merging needs an Admin and two items that are in, unretired and unmerged", async () => {
+test("merging needs an Administrator and two items that are in, unretired and unmerged", async () => {
   const f = await fixture();
   await expect(act.mergeItem(store, f.t1, f.t1)).rejects.toThrow("itself");
   await expect(act.mergeItem(store, f.t1, "nope")).rejects.toThrow("no such item");
@@ -644,7 +644,7 @@ test("merging needs an Admin and two items that are in, unretired and unmerged",
   await act.mergeItem(store, f.t1, f.t2);
   await expect(act.mergeItem(store, f.t1, f.t2)).rejects.toThrow("already merged");
   await store.setMeta({ user: { id: "carol", name: "Carol", role: "user", active: true } });
-  await expect(act.mergeItem(store, f.t2, f.t1)).rejects.toThrow("Admins only");
+  await expect(act.mergeItem(store, f.t2, f.t1)).rejects.toThrow("Administrators only");
 });
 
 test("a number the server sent as a whole number still reads as text (FR-INV-23)", async () => {
@@ -706,7 +706,7 @@ test("a deleted unit leaves its generic's row and does not retire it (FR-INV-32)
   expect(inv.item(store.state, f.tents)?.retired).toBeUndefined();
 });
 
-test("deleting needs an Admin, an item that is in, and a generic with no units (FR-INV-32)", async () => {
+test("deleting needs an Administrator, an item that is in, and a generic with no units (FR-INV-32)", async () => {
   const f = await withUnits();
   await expect(act.deleteItem(store, "nope")).rejects.toThrow("no such item");
   await expect(act.deleteItem(store, f.tents)).rejects.toThrow("delete its units first");
@@ -724,7 +724,7 @@ test("deleting needs an Admin, an item that is in, and a generic with no units (
   expect(inv.rows(store.state, {}).map((r) => r.name)).toEqual(["Tent 1"]);
 
   await store.setMeta({ user: { id: "carol", name: "Carol", role: "user", active: true } });
-  await expect(act.deleteItem(store, f.t1)).rejects.toThrow("Admins only");
+  await expect(act.deleteItem(store, f.t1)).rejects.toThrow("Administrators only");
 });
 
 test("a unit's category is its generic's, not its own (FR-SET-07)", async () => {

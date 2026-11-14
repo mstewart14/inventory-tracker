@@ -11,14 +11,14 @@ interface Props {
   shell: Shell;
 }
 
-/** Export the inventory to a spreadsheet and import it back. Admin only (FR-RPT-03, FR-SET-11). */
+/** Export the inventory to a spreadsheet and import it back. Administrator only (FR-RPT-03, FR-SET-11). */
 export function SettingsCsv({ store, api, shell }: Props) {
   useStore(store);
 
   if (!store.admin) {
     return (
       <Page title="Not found" back="/settings">
-        <p>Admins only.</p>
+        <p>Administrators only.</p>
       </Page>
     );
   }

@@ -17,7 +17,7 @@ function describe(e: unknown): string {
 }
 
 /**
- * Calendar feeds an Admin points at the group's own calendar (FR-RES-20). The
+ * Calendar feeds an Administrator points at the group's own calendar (FR-RES-20). The
  * server fetches and refreshes them; devices only ever see the event names
  * and dates it keeps, through sync, offline.
  *
@@ -49,7 +49,7 @@ export function SettingsCalendars({ store, api }: Props) {
   if (!admin) {
     return (
       <Page title="Not found" back="/settings">
-        <p>Admins only.</p>
+        <p>Administrators only.</p>
       </Page>
     );
   }

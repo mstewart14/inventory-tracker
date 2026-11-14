@@ -155,7 +155,7 @@ def test_a_user_sets_their_own_categories_and_nobody_elses(client, db_path):
 
 
 def _found_setup(db_path, smtp):
-    """A tent on a sticker, an Admin who wants to hear about found gear, and a user who does not."""
+    """A tent on a sticker, an Administrator who wants to hear about found gear, and a user who does not."""
     with open_db(db_path) as conn:
         mail.save(conn, settings(smtp))
         events.append_server(
@@ -314,7 +314,7 @@ def test_a_password_reset_is_not_a_new_account(db_path, smtp):
 
 
 def _lock_setup(db_path, smtp) -> None:
-    """Two Admins, neither subscribed to anything, and a User. Only Admins hear about a lock."""
+    """Two Administrators, neither subscribed to anything, and a User. Only Administrators hear about a lock."""
     with open_db(db_path) as conn:
         mail.save(conn, settings(smtp))
         events.append_server(

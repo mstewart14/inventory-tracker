@@ -342,7 +342,7 @@ def test_gear_admin_load_needs_an_admin(tmp_path, monkeypatch, capsys):
     code, _, err = run(monkeypatch, capsys, "--db", str(tmp_path / "g.db"), "load", "--file", "demo")
 
     assert code == 1
-    assert "no Admin" in err
+    assert "no Administrator" in err
 
 
 def test_gear_admin_load_as_a_named_admin(tmp_path, monkeypatch, capsys):

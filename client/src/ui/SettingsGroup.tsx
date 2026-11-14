@@ -11,14 +11,14 @@ interface Props {
   store: Store;
 }
 
-/** Group name, address, contact, the overdue period, and the iPhone app's link. Admin only (FR-SET-*). */
+/** Group name, address, contact, the overdue period, and the iPhone app's link. Administrator only (FR-SET-*). */
 export function SettingsGroup({ store }: Props) {
   useStore(store);
 
   if (!store.admin) {
     return (
       <Page title="Not found" back="/settings">
-        <p>Admins only.</p>
+        <p>Administrators only.</p>
       </Page>
     );
   }

@@ -59,7 +59,7 @@ export function SettingsAccount({ store, api, onDeleted }: Props) {
       <p>
         This signs you out here, and you cannot sign in again. Your other devices sign out the next time they connect;
         anything they have not sent yet is sent first. Your name stays on the group's records: check-outs, notes,
-        tickets and photos. An Admin can restore your access.
+        tickets and photos. An Administrator can restore your access.
       </p>
       {out > 0 && (
         <p className="notice" role="note">

@@ -1,12 +1,12 @@
 """The config file a fresh instance starts from (NFR-DEP-10).
 
-`GEAR_DATA/seed.toml` holds the first Admin, the group setting, and the mail
+`GEAR_DATA/seed.toml` holds the first Administrator, the group setting, and the mail
 account. `gear-admin seed` reads it at every start, so it is idempotent: the
-Admin is created only if no account has that email, and the group and mail are
-written only where the file differs from what is stored. The Admin's password
+Administrator is created only if no account has that email, and the group and mail are
+written only where the file differs from what is stored. The Administrator's password
 is used once, at creation; a later change in the app is not undone by the file.
 
-The file is a secret. It holds the Admin and mail passwords, so it sits in
+The file is a secret. It holds the Administrator and mail passwords, so it sits in
 `GEAR_DATA` beside the database and never in the repository.
 """
 
@@ -30,7 +30,7 @@ class Section(BaseModel):
     model_config = ConfigDict(strict=True, frozen=True, extra="forbid")
 
 
-class Admin(Section):
+class Administrator(Section):
     name: NonEmpty
     email: accounts.Email
     password: accounts.Password
@@ -43,18 +43,18 @@ class Group(Section):
     contact: str = ""
     # Omitted means never flag (FR-OUT-14).
     overdue_days: Annotated[int, Field(ge=1)] | None = None
-    # The group's iPhone app (NFR-DEP-12). Omitted leaves what an Admin set; "" clears it.
+    # The group's iPhone app (NFR-DEP-12). Omitted leaves what an Administrator set; "" clears it.
     iphone_app_url: HttpsUrlOrBlank = None
 
 
 class Mail(mail.MailSettings):
-    """The same account an Admin would fill in, from the file instead."""
+    """The same account an Administrator would fill in, from the file instead."""
 
     model_config = ConfigDict(strict=True, frozen=True, extra="forbid")
 
 
 class Seed(Section):
-    admin: Admin
+    admin: Administrator
     group: Group
     # No [mail] section means leave mail as it is, not stop sending.
     mail: Mail | None = None
@@ -85,7 +85,7 @@ def apply(conn: sqlite3.Connection, spec: Seed, now: int | None = None) -> list[
     admin_id = accounts.user_id_of(conn, spec.admin.email)
     if admin_id is None:
         admin_id = accounts.install_admin(conn, spec.admin.name, spec.admin.email, spec.admin.password, now)
-        done.append(f"created Admin {spec.admin.email}")
+        done.append(f"created Administrator {spec.admin.email}")
     done += _group(conn, admin_id, spec.group, now)
     done += _mail(conn, spec.mail, now)
     done += _inventory(conn, spec.inventory, admin_id, now)
@@ -103,7 +103,7 @@ def _inventory(conn: sqlite3.Connection, source: str | None, actor_id: str, now:
 
 
 def _group(conn: sqlite3.Connection, actor_id: str, group: Group, now: int) -> list[str]:
-    """The group setting, as ordinary events by the server on the Admin's behalf."""
+    """The group setting, as ordinary events by the server on the Administrator's behalf."""
     wanted: dict[str, Any] = {
         "name": group.name.strip(),
         "code_url": _text(group.code_url),

@@ -9,6 +9,7 @@ import {
   Offline,
 } from "../lib/api";
 import * as inv from "../lib/inventory";
+import { JOIN_LINK_ROLES, ROLES, roleName } from "../lib/roles";
 import { siteUrl } from "../lib/server";
 import { printPage } from "../lib/share";
 import { ago, localDate, localMinute } from "../lib/time";
@@ -43,7 +44,7 @@ function describe(e: unknown): string {
 }
 
 /**
- * Who is in the group, for Admins (FR-USR-04). Invite, change a role, deactivate,
+ * Who is in the group, for Administrators (FR-USR-04). Invite, change a role, deactivate,
  * hand out a reset link, unlock after wrong passwords (FR-USR-29), and cut off one lost device (FR-USR-14). Everything here
  * is a server call: accounts never reach a device.
  */
@@ -78,7 +79,7 @@ export function Users({ store, api }: Props) {
   if (!admin) {
     return (
       <Page title="Not found" back="/settings">
-        <p>Admins only.</p>
+        <p>Administrators only.</p>
       </Page>
     );
   }
@@ -148,7 +149,7 @@ function JoinLinkSection({
   const [links, setLinks] = useState<JoinLink[] | null>(null);
   const [made, setMade] = useState<CreatedJoinLink | null>(null);
   // Whether the notice for `made` is on screen. "Done" hides it without discarding `made`,
-  // so an Admin can bring the same link back up again (View link) without revoking and
+  // so an Administrator can bring the same link back up again (View link) without revoking and
   // remaking it — the server cannot hand the token back once this notice is gone (FR-USR-19).
   const [shown, setShown] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -166,11 +167,11 @@ function JoinLinkSection({
     void load();
   }, [load]);
 
-  async function create(expiry_days: JoinLinkExpiry, label: string) {
+  async function create(expiry_days: JoinLinkExpiry, label: string, role: string) {
     setBusy(true);
     onError(null);
     try {
-      const { data } = await api.createJoinLink(expiry_days, JOIN_LINK_TEMPLATE, label);
+      const { data } = await api.createJoinLink(expiry_days, JOIN_LINK_TEMPLATE, label, role);
       setMade(data);
       setShown(true);
       await load();
@@ -288,6 +289,7 @@ function JoinLinkRow({
     <li className="row">
       <span className={link.label ? "name" : "small"}>{link.label || made}</span>
       {link.label && <span className="small">{made}</span>}
+      <span className="small">Makes {roleName(link.role ?? "user")} accounts</span>
       <button
         type="button"
         className="minor"
@@ -314,16 +316,17 @@ function CreateJoinLinkForm({
   onCreate,
 }: {
   busy: boolean;
-  onCreate: (expiry_days: JoinLinkExpiry, label: string) => void;
+  onCreate: (expiry_days: JoinLinkExpiry, label: string, role: string) => void;
 }) {
   const [days, setDays] = useState<JoinLinkExpiry>(7);
+  const [role, setRole] = useState("user");
   const [label, setLabel] = useState("");
   return (
     <form
       className="row"
       onSubmit={(e) => {
         e.preventDefault();
-        onCreate(days, label.trim());
+        onCreate(days, label.trim(), role);
         setLabel("");
       }}
     >
@@ -346,6 +349,16 @@ function CreateJoinLinkForm({
           <option value={7}>7 days</option>
           <option value={30}>30 days</option>
           <option value={NEVER}>Never</option>
+        </select>
+      </label>
+      <label className="tight">
+        <span>Accounts it makes</span>
+        <select value={role} onChange={(e) => setRole(e.target.value)}>
+          {JOIN_LINK_ROLES.map((r) => (
+            <option key={r} value={r}>
+              {roleName(r)}
+            </option>
+          ))}
         </select>
       </label>
       <button type="submit" className="primary" disabled={busy}>
@@ -557,10 +570,18 @@ function InviteForm({
       <label>
         <span>Role</span>
         <select value={role} onChange={(e) => setRole(e.target.value)}>
-          <option value="user">User</option>
-          <option value="admin">Admin</option>
+          {ROLES.map((r) => (
+            <option key={r} value={r}>
+              {roleName(r)}
+            </option>
+          ))}
         </select>
       </label>
+      {role === "outreach" && (
+        <p className="muted small">
+          Outreach is for a worker from another organization. They see only items marked Outreach or Public.
+        </p>
+      )}
       <div className="row">
         <button type="submit" className="primary" disabled={busy || !name.trim() || !email.trim()}>
           Invite
@@ -697,7 +718,7 @@ function UserRow({
       : "Deactivated";
   // The server says so only while the lock lasts (NFR-SEC-12).
   const locked = user.locked_until ? `Locked until ${localMinute(user.locked_until)}` : "";
-  const summary = [user.email, user.role === "admin" ? "Admin" : "", status, locked].filter(Boolean).join(" · ");
+  const summary = [user.email, roleName(user.role), status, locked].filter(Boolean).join(" · ");
 
   return (
     <li>
@@ -719,10 +740,16 @@ function UserRow({
               disabled={busy || me}
               onChange={(e) => act(() => api.setRole(user.id, e.target.value), onChanged)}
             >
-              <option value="user">User</option>
-              <option value="admin">Admin</option>
+              {ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {roleName(r)}
+                </option>
+              ))}
             </select>
           </label>
+          {user.role !== "outreach" && !me && (
+            <p className="muted small">Making someone Outreach, or moving them out of it, signs them out everywhere.</p>
+          )}
           <div className="row">
             {user.active ? (
               <button
@@ -767,7 +794,7 @@ function UserRow({
               </button>
             )}
           </div>
-          {me && <p className="muted small">Another Admin changes your role or ends your access.</p>}
+          {me && <p className="muted small">Another Administrator changes your role or ends your access.</p>}
           <h3 className="section small">Devices</h3>
           <DeviceList
             userId={user.id}

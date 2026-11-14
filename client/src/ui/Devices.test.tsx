@@ -7,7 +7,7 @@ import { openDb } from "../lib/db";
 import { Store } from "../lib/store";
 import { SettingsDevices } from "./SettingsDevices";
 
-// "Your devices" in Settings (FR-USR-17), the same list Users.tsx shows an Admin for someone else.
+// "Your devices" in Settings (FR-USR-17), the same list Users.tsx shows an Administrator for someone else.
 const T0 = 1_756_684_800_000;
 let store: Store;
 let devices: Device[];

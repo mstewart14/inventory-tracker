@@ -1,8 +1,8 @@
 """gear-admin: the things that have to happen at the server's keyboard.
 
-Creating the first Admin (FR-USR-13), seeding a fresh instance from its config
+Creating the first Administrator (FR-USR-13), seeding a fresh instance from its config
 file, loading test data into an empty one, exporting and importing the
-inventory as a spreadsheet, and getting back in when every Admin has lost
+inventory as a spreadsheet, and getting back in when every Administrator has lost
 their password or their role, or is locked out by wrong passwords.
 """
 
@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--db", required=True, help="path to the SQLite file")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    create = sub.add_parser("create-admin", help="create the first Admin account")
+    create = sub.add_parser("create-admin", help="create the first Administrator account")
     create.add_argument("--name", required=True)
     create.add_argument("--email", required=True)
     create.add_argument("--password-stdin", action="store_true", help="read the password from stdin")
@@ -41,25 +41,29 @@ def main(argv: list[str] | None = None) -> int:
     reset = sub.add_parser("reset-link", help="print a one-time password reset link token for a user")
     reset.add_argument("--email", required=True)
 
-    grant = sub.add_parser("grant-admin", help="make an existing account an Admin")
+    grant = sub.add_parser("grant-admin", help="make an existing account an Administrator")
     grant.add_argument("--email", required=True)
 
     unlock = sub.add_parser("unlock", help="end a sign-in lock on an email early")
     unlock.add_argument("--email", required=True)
 
-    apply_seed = sub.add_parser("seed", help="apply a seed file: first Admin, group setting, mail")
+    apply_seed = sub.add_parser("seed", help="apply a seed file: first Administrator, group setting, mail")
     apply_seed.add_argument("--file", required=True, help="path to seed.toml")
 
     load = sub.add_parser("load", help="load locations and items into a database with no items")
     load.add_argument("--file", required=True, help='"demo" for the bundled file, or a path to one of your own')
-    load.add_argument("--as", dest="actor", help="email of the Admin to record it as; the first Admin by default")
+    load.add_argument(
+        "--as", dest="actor", help="email of the Administrator to record it as; the first Administrator by default"
+    )
 
     export = sub.add_parser("export", help="write the inventory as a CSV file")
     export.add_argument("--out", help="where to write it; stdout by default")
 
     do_import = sub.add_parser("import", help="add or change items from a CSV file")
     do_import.add_argument("--file", required=True, help="path to the CSV file")
-    do_import.add_argument("--as", dest="actor", help="email of the Admin to record it as; the first Admin by default")
+    do_import.add_argument(
+        "--as", dest="actor", help="email of the Administrator to record it as; the first Administrator by default"
+    )
     do_import.add_argument("--dry-run", action="store_true", help="show what would change, and write nothing")
 
     sub.add_parser("rebuild", help="throw away the derived-state cache and replay the whole log")
@@ -74,12 +78,13 @@ def main(argv: list[str] | None = None) -> int:
                     print("error: password must be at least 8 characters", file=sys.stderr)
                     return 1
                 user_id = accounts.create_admin(conn, args.name, args.email, password)
-                print(f"created Admin {args.email} ({user_id})")
+                print(f"created Administrator {args.email} ({user_id})")
             elif args.command == "load":
                 actor_id = accounts.user_id_of(conn, args.actor) if args.actor else accounts.first_admin(conn)
                 if actor_id is None:
                     print(
-                        f"error: no account for {args.actor}" if args.actor else "error: no Admin yet", file=sys.stderr
+                        f"error: no account for {args.actor}" if args.actor else "error: no Administrator yet",
+                        file=sys.stderr,
                     )
                     return 1
                 print(inventory.load(conn, inventory.read(args.file), actor_id))
@@ -94,7 +99,8 @@ def main(argv: list[str] | None = None) -> int:
                 actor_id = accounts.user_id_of(conn, args.actor) if args.actor else accounts.first_admin(conn)
                 if actor_id is None:
                     print(
-                        f"error: no account for {args.actor}" if args.actor else "error: no Admin yet", file=sys.stderr
+                        f"error: no account for {args.actor}" if args.actor else "error: no Administrator yet",
+                        file=sys.stderr,
                     )
                     return 1
                 text = Path(args.file).read_text()
@@ -121,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
                 print("\n".join(done) if done else "nothing to do")
             elif args.command == "grant-admin":
                 accounts.grant_admin(conn, args.email)
-                print(f"{args.email} is an Admin")
+                print(f"{args.email} is an Administrator")
             elif args.command == "unlock":
                 email = accounts.normal_email(args.email)
                 if accounts.unlock_email(conn, email):
@@ -136,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
                 if user_id is None:
                     print(f"error: no account for {args.email}", file=sys.stderr)
                     return 1
-                # The keyboard is the credential here, so no Admin principal is needed.
+                # The keyboard is the credential here, so no Administrator principal is needed.
                 token = accounts._issue_link(conn, user_id, "reset", accounts.now_ms())
                 print(token)
         except ApiError as exc:

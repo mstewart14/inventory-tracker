@@ -131,7 +131,7 @@ def test_the_password_is_kept_but_never_read_back(db, smtp):
     assert "password" not in described
     assert described["has_password"] is True
 
-    # A blank password on a later save means "leave it alone", so an Admin can
+    # A blank password on a later save means "leave it alone", so an Administrator can
     # change the port without retyping a secret they cannot read.
     mail.save(db, settings(smtp, username="gear@example.org"))
     saved = mail.get(db)
@@ -237,7 +237,7 @@ def test_a_broken_mail_account_still_hands_back_the_link(admin_client, smtp):
     ).json()
     assert body["emailed"] is False
     assert "mail_error" in body
-    assert body["token"], "the invite still worked; the Admin copies the link"
+    assert body["token"], "the invite still worked; the Administrator copies the link"
 
 
 def test_an_invite_sends_even_when_the_group_name_has_a_line_break(admin_client, smtp, db_path):

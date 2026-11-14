@@ -328,11 +328,11 @@ export const unretireItem = (store: Store, id: string) => changed(store, "item",
  * scanned later offers create-or-bind instead of a dead record. Retire
  * (FR-INV-04) is the one for gear written off.
  *
- * Admins only, and only an item that is in. A generic goes after its units, so
+ * Administrators only, and only an item that is in. A generic goes after its units, so
  * nothing is left pointing at a name that is gone.
  */
 export async function deleteItem(store: Store, id: string): Promise<void> {
-  if (!store.admin) throw new Error("Admins only");
+  if (!store.admin) throw new Error("Administrators only");
   const it = item(store.state, id);
   if (!it) throw new Error("no such item");
   if (it.merged_into) throw new Error("this item was merged into another");
@@ -422,10 +422,10 @@ export async function groupWith(
 
 /**
  * Fold a duplicate into the item it doubles (FR-INV-13). One field on the duplicate; nothing is rewritten.
- * Admins only; the duplicate must be in, and neither item retired or already merged.
+ * Administrators only; the duplicate must be in, and neither item retired or already merged.
  */
 export async function mergeItem(store: Store, duplicateId: string, survivorId: string): Promise<void> {
-  if (!store.admin) throw new Error("Admins only");
+  if (!store.admin) throw new Error("Administrators only");
   const dup = item(store.state, duplicateId);
   const survivor = item(store.state, survivorId);
   if (!dup || !survivor) throw new Error("no such item");
@@ -567,7 +567,7 @@ export const deleteCategory = (store: Store, id: string) => changed(store, "cate
 
 // --- group ---------------------------------------------------------------------------------
 
-/** Admin only; the server refuses it from anyone else. */
+/** Administrator only; the server refuses it from anyone else. */
 export async function setGroup(
   store: Store,
   patch: { name?: string; code_url?: string; contact?: string; overdue_days?: number | null; iphone_app_url?: string },

@@ -54,7 +54,7 @@ def client(db_path):
 
 @pytest.fixture
 def real(db_path):
-    """The real authenticator, with the first Admin already created."""
+    """The real authenticator, with the first Administrator already created."""
     with open_db(db_path) as conn:
         accounts.create_admin(conn, "Alex", "alex@example.org", "correct horse")
     return TestClient(create_app(db_path))
@@ -365,10 +365,10 @@ def test_invite_redeem_and_manage(real):
     assert real.post(f"/users/{alex_id}/role", json={"role": "user"}, headers=bea).status_code == 200
     r = real.post(f"/users/{user_id}/role", json={"role": "user"}, headers=bea)
     assert r.status_code == 409
-    assert r.json()["message"] == "you cannot drop your own Admin role; another Admin must do it"
+    assert r.json()["message"] == "you cannot drop your own Administrator role; another Administrator must do it"
     r = real.post(f"/users/{user_id}/deactivate", headers=bea)
     assert r.status_code == 409
-    assert r.json()["message"] == "you cannot deactivate your own account; another Admin must do it"
+    assert r.json()["message"] == "you cannot deactivate your own account; another Administrator must do it"
 
 
 def test_edit_user_over_http(real):
@@ -423,11 +423,11 @@ def test_deactivated_over_http(real):
 
 
 def test_delete_my_account_over_http(real):
-    """FR-USR-25. The last Admin is refused; anyone else is signed out and cannot sign back in."""
+    """FR-USR-25. The last Administrator is refused; anyone else is signed out and cannot sign back in."""
     admin = sign_in(real)
     r = real.post("/me/deactivate", headers=admin)
     assert r.status_code == 409
-    assert r.json()["message"] == "you are the last Admin; make someone else an Admin first"
+    assert r.json()["message"] == "you are the last Administrator; make someone else an Administrator first"
 
     invited = real.post("/users/invite", json={"name": "Bea", "email": "bea@example.org"}, headers=admin).json()
     real.post("/auth/redeem", json={"token": invited["token"], "password": "battery staple", "device_id": "phone-b"})
@@ -797,7 +797,7 @@ def test_api_routes_win_over_the_client(site):
 
 @pytest.fixture
 def admin(db_path):
-    """The header authenticator, with an Admin's headers ready to send."""
+    """The header authenticator, with an Administrator's headers ready to send."""
     return {"X-Test-User": "alice", "X-Test-Device": "phone-a", "X-Test-Role": "admin"}
 
 
@@ -1472,7 +1472,7 @@ def test_the_email_is_recorded_lowercased(real, failures):
 
 
 def test_a_deactivated_account_says_so_rather_than_wrong_password(real, db_path, failures):
-    """The password was right. Reading it as a guess would send an Admin looking for an attacker."""
+    """The password was right. Reading it as a guess would send an Administrator looking for an attacker."""
     with open_db(db_path) as conn:
         sam = accounts.install_admin(conn, "Sam", "sam@example.org", "also correct")
     real.post(f"/users/{sam}/deactivate", headers=sign_in(real))

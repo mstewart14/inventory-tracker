@@ -6,7 +6,7 @@ import type { Store } from "../lib/store";
 import { openStore } from "./codeTestKit";
 import { SettingsCsv } from "./SettingsCsv";
 
-// Export and import in Settings, Admin only (FR-RPT-03, FR-SET-11). A fake server answers the CSV routes.
+// Export and import in Settings, Administrator only (FR-RPT-03, FR-SET-11). A fake server answers the CSV routes.
 const T0 = 1_756_684_800_000;
 let store: Store;
 let calls: { path: string; body: string }[];

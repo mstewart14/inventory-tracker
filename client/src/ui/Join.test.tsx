@@ -43,7 +43,7 @@ const fetchFake = async (input: string | URL | Request, init?: RequestInit): Pro
     return json({ error: "invite_used", message: "you already have an account; sign in instead" }, 401);
   if (body.token === "USED_RESET")
     return json(
-      { error: "reset_used", message: "this reset link has already been used; ask an Admin for a new one" },
+      { error: "reset_used", message: "this reset link has already been used; ask an Administrator for a new one" },
       401,
     );
   if (body.token !== "GOOD") return json({ error: "unauthorized", message: "this link is not valid" }, 401);
@@ -118,14 +118,14 @@ test("a spent invite says the account exists, and offers sign in", async () => {
   expect(location.pathname).toBe("/");
 });
 
-test("a spent reset link says to ask an Admin, with no form left to retry", async () => {
+test("a spent reset link says to ask an Administrator, with no form left to retry", async () => {
   navigate("/join?token=USED_RESET");
   mount();
   await user.type(screen.getByLabelText("New password"), "battery staple");
   await user.type(screen.getByLabelText("Again"), "battery staple");
   await user.click(screen.getByRole("button", { name: "Set password and sign in" }));
 
-  expect(await screen.findByRole("alert")).toHaveTextContent("Ask an Admin for a new one");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Ask an Administrator for a new one");
   expect(screen.queryByLabelText("New password")).not.toBeInTheDocument();
 });
 

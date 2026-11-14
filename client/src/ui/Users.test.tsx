@@ -8,7 +8,7 @@ import type { Store } from "../lib/store";
 import { openStore } from "./codeTestKit";
 import { Users } from "./Users";
 
-// Admin user management is a set of server calls (FR-USR-04, FR-USR-14). A fake server answers them.
+// Administrator user management is a set of server calls (FR-USR-04, FR-USR-14). A fake server answers them.
 const T0 = 1_756_684_800_000;
 let store: Store;
 let calls: string[];
@@ -23,6 +23,7 @@ let joinLinks: {
   created_by_name: string;
   created_at: number;
   expires_at: number | null;
+  role: string;
 }[];
 
 const freshUsers = (): AccountUser[] => [
@@ -65,21 +66,43 @@ const fetchFake = async (input: string | URL | Request, init?: RequestInit): Pro
     users[1] = { ...users[1]!, active: false, deactivated_at: T0 };
     return json({ user: users[1] });
   }
+  if (path === "/users/bea/role") {
+    users[1] = { ...users[1]!, role: String(sent.role) };
+    return json({ user: users[1] });
+  }
   if (path === "/users/bea/unlock") {
     users[1] = { ...users[1]!, locked_until: null };
     return json({ user: users[1] });
   }
   if (path === "/users/bea/edit") {
     if (sent.email === "alice@example.org") {
-      return json({ error: "conflict", message: "an account with that email already exists" }, 409);
+      return json(
+        {
+          error: "conflict",
+          message: "an account with that email already exists",
+        },
+        409,
+      );
     }
-    users[1] = { ...users[1]!, name: String(sent.name), email: String(sent.email) };
+    users[1] = {
+      ...users[1]!,
+      name: String(sent.name),
+      email: String(sent.email),
+    };
     return json({ user: users[1] });
   }
-  if (path === "/users/alice/devices") return json({ devices: [{ device_id: store.meta.device_id, created_at: T0 }] });
+  if (path === "/users/alice/devices")
+    return json({
+      devices: [{ device_id: store.meta.device_id, created_at: T0 }],
+    });
   if (path === "/join-links" && init?.method === "GET") return json({ links: joinLinks });
   if (path === "/join-links" && init?.method === "POST") {
-    const body = JSON.parse(String(init.body)) as { expiry_days: number | null; link: string; label: string };
+    const body = JSON.parse(String(init.body)) as {
+      expiry_days: number | null;
+      link: string;
+      label: string;
+      role: string;
+    };
     const made = {
       id: "link-1",
       label: body.label,
@@ -87,12 +110,20 @@ const fetchFake = async (input: string | URL | Request, init?: RequestInit): Pro
       created_by_name: "Alice",
       created_at: T0,
       expires_at: body.expiry_days === null ? null : T0 + body.expiry_days * 86_400_000,
+      role: body.role,
     };
     joinLinks = [made, ...joinLinks];
-    return json({ ...made, token: "JOIN-TOKEN", url: body.link.replace("TOKEN", "JOIN-TOKEN"), qr_svg: "<svg />" });
+    return json({
+      ...made,
+      token: "JOIN-TOKEN",
+      url: body.link.replace("TOKEN", "JOIN-TOKEN"),
+      qr_svg: "<svg />",
+    });
   }
   if (path === "/join-links/link-1/label") {
-    const { label } = JSON.parse(String(init?.body ?? "{}")) as { label: string };
+    const { label } = JSON.parse(String(init?.body ?? "{}")) as {
+      label: string;
+    };
     joinLinks = joinLinks.map((l) => (l.id === "link-1" ? { ...l, label } : l));
     return json({ links: joinLinks });
   }
@@ -127,7 +158,7 @@ test("lists the group and revokes one device without touching the person (FR-USR
     within(list)
       .getAllByRole("listitem")
       .map((li) => li.textContent),
-  ).toEqual(["Alicealice@example.org · Admin", "Beabea@example.org · Invited"]);
+  ).toEqual(["Alicealice@example.org · Administrator", "Beabea@example.org · Staff · Invited"]);
 
   await user.click(within(list).getByRole("button", { name: /Bea/ }));
   const phones = await screen.findByRole("list", { name: "Devices of Bea" });
@@ -139,8 +170,15 @@ test("lists the group and revokes one device without touching the person (FR-USR
   expect(calls.filter((c) => c.includes("deactivate"))).toEqual([]);
 });
 
-test("a deactivated user is hidden until an Admin asks to see them (FR-USR-04)", async () => {
-  users.push({ id: "cal", name: "Cal", role: "user", active: false, email: "cal@example.org", has_password: true });
+test("a deactivated user is hidden until an Administrator asks to see them (FR-USR-04)", async () => {
+  users.push({
+    id: "cal",
+    name: "Cal",
+    role: "user",
+    active: false,
+    email: "cal@example.org",
+    has_password: true,
+  });
   mount();
   const list = await screen.findByRole("list", { name: "Users" });
   expect(within(list).queryByText(/Cal/)).not.toBeInTheDocument();
@@ -149,7 +187,7 @@ test("a deactivated user is hidden until an Admin asks to see them (FR-USR-04)",
   expect(within(list).getByText(/Cal/)).toBeInTheDocument();
 });
 
-test("an Admin's own device cannot be revoked here; sign out instead", async () => {
+test("an Administrator's own device cannot be revoked here; sign out instead", async () => {
   mount();
   await user.click(await screen.findByRole("button", { name: /Alice/ }));
   const phones = await screen.findByRole("list", { name: "Devices of Alice" });
@@ -158,7 +196,7 @@ test("an Admin's own device cannot be revoked here; sign out instead", async () 
   expect(screen.getByRole("button", { name: "Deactivate" })).toBeDisabled();
 });
 
-test("an Admin cannot drop their own role here (FR-USR-22)", async () => {
+test("an Administrator cannot drop their own role here (FR-USR-22)", async () => {
   mount();
   await user.click(await screen.findByRole("button", { name: /Alice/ }));
   expect(await screen.findByRole("combobox", { name: "Role of Alice" })).toBeDisabled();
@@ -176,7 +214,7 @@ test("deactivating shows the date next to the status (FR-USR-20)", async () => {
 
   await waitFor(() =>
     expect(within(list).getByRole("button", { name: /Bea/ })).toHaveTextContent(
-      `Beabea@example.org · Deactivated ${localDate(T0)}`,
+      `Beabea@example.org · Staff · Deactivated ${localDate(T0)}`,
     ),
   );
   expect(calls).toContain("POST /users/bea/deactivate");
@@ -217,7 +255,7 @@ test("when the server has a mail account, it says the invite was emailed (FR-USR
   expect(sent.link).toBe(`${location.origin}/join?token=TOKEN`);
 });
 
-test("an Admin fixes a name and an email (FR-USR-04)", async () => {
+test("an Administrator fixes a name and an email (FR-USR-04)", async () => {
   mount();
   const list = await screen.findByRole("list", { name: "Users" });
   await user.click(within(list).getByRole("button", { name: /Bea/ }));
@@ -231,8 +269,8 @@ test("an Admin fixes a name and an email (FR-USR-04)", async () => {
 
   expect(calls).toContain("POST /users/bea/edit");
   expect(sent).toEqual({ name: "Beatrice", email: "beatrice@example.org" });
-  await screen.findByText("beatrice@example.org · Invited");
-  expect(within(list).getAllByRole("listitem")[1]).toHaveTextContent("Beatricebeatrice@example.org · Invited");
+  await screen.findByText("beatrice@example.org · Staff · Invited");
+  expect(within(list).getAllByRole("listitem")[1]).toHaveTextContent("Beatricebeatrice@example.org · Staff · Invited");
 });
 
 test("a clashing email is shown inline, the same way other errors are (FR-USR-04)", async () => {
@@ -248,7 +286,7 @@ test("a clashing email is shown inline, the same way other errors are (FR-USR-04
   expect(await screen.findByRole("alert")).toHaveTextContent("an account with that email already exists");
   // The form is still open, and Bea's row is unchanged.
   expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
-  expect(within(list).getAllByRole("listitem")[1]).toHaveTextContent("Beabea@example.org · Invited");
+  expect(within(list).getAllByRole("listitem")[1]).toHaveTextContent("Beabea@example.org · Staff · Invited");
 });
 
 test("offline, the screen says it needs a connection", async () => {
@@ -257,7 +295,7 @@ test("offline, the screen says it needs a connection", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent("Needs a connection");
 });
 
-test("an Admin creates a standing join link and sees its URL and QR (FR-USR-19)", async () => {
+test("an Administrator creates a standing join link and sees its URL and QR (FR-USR-19)", async () => {
   mount();
   await user.click(await screen.findByRole("button", { name: "Create join link" }));
 
@@ -265,7 +303,12 @@ test("an Admin creates a standing join link and sees its URL and QR (FR-USR-19)"
   expect(status).toHaveTextContent(`${location.origin}/join?link=JOIN-TOKEN`);
   expect(status.querySelector(".qr svg")).toBeTruthy();
   expect(calls).toContain("POST /join-links");
-  expect(sent).toEqual({ expiry_days: 7, link: `${location.origin}/join?link=TOKEN`, label: "" });
+  expect(sent).toEqual({
+    expiry_days: 7,
+    link: `${location.origin}/join?link=TOKEN`,
+    label: "",
+    role: "user",
+  });
 
   const list = await screen.findByRole("list", { name: "Join links" });
   expect(within(list).getByText(/Made by Alice/)).toBeInTheDocument();
@@ -380,13 +423,15 @@ test("Print opens a page titled for the group, with the QR and no URL, and Back 
 });
 
 test("not for users", async () => {
-  await store.setMeta({ user: { id: "bea", name: "Bea", role: "user", active: true } });
+  await store.setMeta({
+    user: { id: "bea", name: "Bea", role: "user", active: true },
+  });
   mount();
   expect(screen.getByRole("heading", { name: "Not found" })).toBeInTheDocument();
   expect(calls).toEqual([]);
 });
 
-test("a locked account says until when, and an Admin unlocks it (FR-USR-27, FR-USR-29)", async () => {
+test("a locked account says until when, and an Administrator unlocks it (FR-USR-27, FR-USR-29)", async () => {
   users[1] = { ...users[1]!, locked_until: T0 + 15 * 60_000 };
   mount();
   const list = await screen.findByRole("list", { name: "Users" });
@@ -400,4 +445,46 @@ test("a locked account says until when, and an Admin unlocks it (FR-USR-27, FR-U
   await waitFor(() => expect(bea).not.toHaveTextContent("Locked"));
   expect(calls).toContain("POST /users/bea/unlock");
   expect(screen.queryByRole("button", { name: "Unlock" })).not.toBeInTheDocument();
+});
+
+test("an invite can be for an Outreach worker, and says what that means (FR-USR-36, FR-USR-40)", async () => {
+  mount();
+  await user.click(await screen.findByRole("button", { name: "Invite someone" }));
+  await user.type(screen.getByLabelText("Name"), "Omar");
+  await user.type(screen.getByLabelText("Email"), "omar@example.org");
+  expect(
+    within(screen.getByLabelText("Role"))
+      .getAllByRole("option")
+      .map((o) => o.textContent),
+  ).toEqual(["Staff", "Administrator", "Outreach"]);
+  await user.selectOptions(screen.getByLabelText("Role"), "Outreach");
+  expect(screen.getByText(/a worker from another organization/)).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Invite" }));
+  await screen.findByRole("status");
+  expect(sent.role).toBe("outreach");
+});
+
+test("a person is made Outreach from their row, and the row says so (FR-USR-36)", async () => {
+  mount();
+  await user.click(await screen.findByRole("button", { name: /Bea/ }));
+  expect(screen.getByText(/signs them out everywhere/)).toBeInTheDocument();
+  await user.selectOptions(screen.getByLabelText("Role of Bea"), "Outreach");
+  await waitFor(() => expect(calls).toContain("POST /users/bea/role"));
+  expect(sent).toEqual({ role: "outreach" });
+});
+
+test("a join link is made for Staff or Outreach, never an Administrator (FR-USR-40, FR-USR-41)", async () => {
+  mount();
+  const makes = await screen.findByLabelText("Accounts it makes");
+  expect(
+    within(makes)
+      .getAllByRole("option")
+      .map((o) => o.textContent),
+  ).toEqual(["Staff", "Outreach"]);
+  await user.selectOptions(makes, "Outreach");
+  await user.click(screen.getByRole("button", { name: "Create join link" }));
+  await screen.findByRole("status");
+  expect(sent.role).toBe("outreach");
+  const list = await screen.findByRole("list", { name: "Join links" });
+  expect(within(list).getByText("Makes Outreach accounts")).toBeInTheDocument();
 });

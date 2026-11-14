@@ -29,7 +29,7 @@ export interface User {
   deactivated_at?: number | null;
 }
 
-/** A user as an Admin sees them: the person from the log, plus the credential side (FR-USR-04). */
+/** A user as an Administrator sees them: the person from the log, plus the credential side (FR-USR-04). */
 export interface AccountUser extends User {
   email: string;
   has_password: boolean;
@@ -38,7 +38,7 @@ export interface AccountUser extends User {
 }
 
 /**
- * One SMTP account, so the server can mail a link (FR-USR-15). Admins only,
+ * One SMTP account, so the server can mail a link (FR-USR-15). Administrators only,
  * and never stored on the device. The password is write-only: `has_password`
  * says whether one is held, and a blank password on save keeps it.
  */
@@ -86,15 +86,17 @@ export type LayoutName = "standard" | "cards";
 /** The days a standing join link is good for (FR-USR-19): 1, 7 (the default) or 30, or null to never expire. */
 export type JoinLinkExpiry = 1 | 7 | 30 | null;
 
-/** A live standing join link, as an Admin sees it in the list. Never the token (FR-USR-19). */
+/** A live standing join link, as an Administrator sees it in the list. Never the token (FR-USR-19). */
 export interface JoinLink {
   id: string;
-  /** What the link is for, in the Admin's words (FR-USR-21). Empty when unlabelled. */
+  /** What the link is for, in the Administrator's words (FR-USR-21). Empty when unlabelled. */
   label: string;
   created_by: string;
   created_by_name: string | null;
   created_at: number;
   expires_at: number | null;
+  /** The role an account made from the link gets (FR-USR-40): Staff or Outreach. */
+  role: string;
 }
 
 /** What creating a standing join link hands back, once, to show and print (FR-USR-19). */
@@ -152,7 +154,7 @@ export interface HoldHandle {
   handle: string;
 }
 
-/** A calendar feed an Admin added (FR-RES-20). `url_redacted` is host and path; the query
+/** A calendar feed an Administrator added (FR-RES-20). `url_redacted` is host and path; the query
  * string, where a private token lives, never reaches a device (NFR-SEC-10). */
 export interface CalendarFeed {
   id: string;
@@ -166,7 +168,7 @@ export interface History {
   events: ServerEvent[];
 }
 
-/** What an Admin narrows the audit log to (FR-USR-24). Dates are calendar days where the group is. */
+/** What an Administrator narrows the audit log to (FR-USR-24). Dates are calendar days where the group is. */
 export interface AuditFilter {
   type?: string;
   actor?: string;
@@ -209,6 +211,18 @@ export interface CatalogueItem {
 export interface PublicCatalogue {
   group: { name: string; contact: string };
   items: CatalogueItem[];
+}
+
+/** One item as Outreach is shown it (FR-VIS-09): where it is kept, and how many could be asked for. */
+export interface OutreachItem extends CatalogueItem {
+  id: string;
+  locations: string[];
+  available: number;
+}
+
+export interface OutreachItems {
+  group: { name: string; contact: string };
+  items: OutreachItem[];
 }
 
 export interface Timed<T> {
@@ -355,7 +369,7 @@ export function createApi(options: ApiOptions = {}) {
         "GET",
         entity_id === undefined ? `/history/${entity_type}` : `/history/${entity_type}/${entity_id}`,
       ),
-    /** The whole log, newest first, narrowed and one page at a time (FR-USR-24). Admins only. */
+    /** The whole log, newest first, narrowed and one page at a time (FR-USR-24). Administrators only. */
     audit: (filter: AuditFilter = {}) => {
       const query = new URLSearchParams(
         Object.entries(filter)
@@ -386,7 +400,7 @@ export function createApi(options: ApiOptions = {}) {
     signOut: () => request<Record<string, never>>("POST", "/auth/sign-out"),
     /** Deactivate your own account (FR-USR-25). This device is signed out with it. */
     deleteMyAccount: () => request<Record<string, never>>("POST", "/me/deactivate"),
-    /** Mint a token for an assistant (FR-MCP-01). Any signed-in person; no Admin involved. */
+    /** Mint a token for an assistant (FR-MCP-01). Any signed-in person; no Administrator involved. */
     connectAssistant: () => request<AssistantToken>("POST", "/assistant/connect"),
     /** Use an invite or reset link (FR-USR-12): set a password, open this device's session. */
     redeem: (token: string, password: string, device_id: string) =>
@@ -400,7 +414,7 @@ export function createApi(options: ApiOptions = {}) {
         password,
         device_id,
       }),
-    // Admins only. Every call needs the network; nothing here is stored on the device.
+    // Administrators only. Every call needs the network; nothing here is stored on the device.
     users: () => request<{ users: AccountUser[] }>("GET", "/users"),
     /** `link` is this app's join page with TOKEN standing in for the token; the server fills it in. */
     invite: (name: string, email: string, role: string, link: string) =>
@@ -426,11 +440,12 @@ export function createApi(options: ApiOptions = {}) {
     saveNotifications: (categories: NotificationCategories) =>
       request<NotificationSettings>("PUT", "/me/notifications", categories),
     /** A standing link and its QR (FR-USR-19). `link` is this app's join page with TOKEN standing in. */
-    createJoinLink: (expiry_days: JoinLinkExpiry, link: string, label: string) =>
+    createJoinLink: (expiry_days: JoinLinkExpiry, link: string, label: string, role = "user") =>
       request<CreatedJoinLink>("POST", "/join-links", {
         expiry_days,
         link,
         label,
+        role,
       }),
     joinLinks: () => request<{ links: JoinLink[] }>("GET", "/join-links"),
     /** Label a link, or change its label (FR-USR-21). The link itself keeps working. */
@@ -443,9 +458,9 @@ export function createApi(options: ApiOptions = {}) {
     saveMail: (settings: Omit<MailSettings, "has_password"> & { password: string }) =>
       request<{ mail: MailSettings }>("PUT", "/mail", settings),
     clearMail: () => request<{ mail: null }>("DELETE", "/mail"),
-    /** To the signed-in Admin's own address, so a wrong password shows up now (FR-USR-16). */
+    /** To the signed-in Administrator's own address, so a wrong password shows up now (FR-USR-16). */
     testMail: () => request<{ sent_to: string }>("POST", "/mail/test"),
-    /** Calendar feeds an Admin adds (FR-RES-20). Admins only; a device never sees the feed URLs. */
+    /** Calendar feeds an Administrator adds (FR-RES-20). Administrators only; a device never sees the feed URLs. */
     calendars: () => request<{ feeds: CalendarFeed[] }>("GET", "/calendars"),
     addCalendar: (url: string, label: string) => request<{ feed: CalendarFeed }>("POST", "/calendars", { url, label }),
     removeCalendar: (id: string) => request<Record<string, never>>("DELETE", `/calendars/${id}`),
@@ -464,12 +479,16 @@ export function createApi(options: ApiOptions = {}) {
     },
     /** An <img> cannot send the bearer header, so the bytes are fetched and shown from memory. */
     fetchPhoto: async (id: string): Promise<Blob> => (await raw("GET", `/photos/${id}`)).blob(),
-    /** A PDF of fresh unassigned codes (FR-TAG-02). Admins only; the sheet is built on the server. */
+    /** What an Outreach worker may see, made by the server on each call (FR-VIS-02, FR-VIS-03). */
+    outreachItems: () => request<OutreachItems>("GET", "/outreach/items"),
+    /** A photo of something Outreach is shown; the server serves them no other (FR-VIS-09). */
+    fetchOutreachPhoto: async (id: string): Promise<Blob> => (await raw("GET", `/outreach/photos/${id}`)).blob(),
+    /** A PDF of fresh unassigned codes (FR-TAG-02). Administrators only; the sheet is built on the server. */
     codeSheets: async (sheets: number, layout: LayoutName): Promise<Blob> =>
       (await raw("POST", "/codes/sheets", JSON.stringify({ sheets, layout }), "application/json")).blob(),
     /** Every live item as a spreadsheet (FR-RPT-03). Any signed-in person. */
     exportCsv: async (): Promise<Blob> => (await raw("GET", "/inventory.csv")).blob(),
-    /** What an import would do, without doing it (FR-SET-11). Admins only. */
+    /** What an import would do, without doing it (FR-SET-11). Administrators only. */
     previewImport: async (text: string): Promise<ImportPlan> =>
       (await raw("POST", "/inventory/import/preview", text, "text/csv")).json(),
     applyImport: async (text: string): Promise<ImportResult> =>

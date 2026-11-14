@@ -39,7 +39,7 @@ def test_create_admin_migrates_and_creates(tmp_path, monkeypatch, capsys):
         stdin="correct horse\n",
     )
     assert code == 0, err
-    assert out.startswith("created Admin alex@example.org")
+    assert out.startswith("created Administrator alex@example.org")
 
     with open_db(db) as conn:
         session = accounts.sign_in(conn, SignIn(email="alex@example.org", password="correct horse", device_id="p"))
@@ -107,7 +107,7 @@ def test_reset_link_for_nobody(tmp_path, monkeypatch, capsys):
 
 
 def test_grant_admin_gives_the_role_back(tmp_path, monkeypatch, capsys):
-    """FR-USR-22's way out: an Admin demoted by another Admin, with nobody left to promote them."""
+    """FR-USR-22's way out: an Administrator demoted by another Administrator, with nobody left to promote them."""
     db = with_admin(tmp_path, monkeypatch, capsys)
     with open_db(db) as conn:
         alex = accounts.user_id_of(conn, "alex@example.org")
@@ -121,7 +121,7 @@ def test_grant_admin_gives_the_role_back(tmp_path, monkeypatch, capsys):
 
     code, out, err = run(monkeypatch, capsys, "--db", str(db), "grant-admin", "--email", "alex@example.org")
     assert code == 0, err
-    assert out.strip() == "alex@example.org is an Admin"
+    assert out.strip() == "alex@example.org is an Administrator"
 
     with open_db(db) as conn:
         assert accounts.get_user(conn, alex)["role"] == "admin"
@@ -228,7 +228,7 @@ def test_rebuild_backfills_a_derived_field_added_after_the_fact(tmp_path, monkey
 
 
 def test_unlock_ends_a_lock_from_the_keyboard(tmp_path, monkeypatch, capsys):
-    """For when every Admin is locked out (FR-USR-28)."""
+    """For when every Administrator is locked out (FR-USR-28)."""
     db = with_admin(tmp_path, monkeypatch, capsys)
     with open_db(db) as conn:
         for _ in range(5):

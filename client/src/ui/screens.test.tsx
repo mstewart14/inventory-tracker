@@ -582,7 +582,7 @@ test("deleting a location in use is refused and names the items", async () => {
   await waitFor(() => expect(inv.locations(store.state).map((l) => l.name)).toEqual(["Cold locker", "Dry locker"]));
 });
 
-test("an Admin adds a category in Settings and it appears (FR-SET-07)", async () => {
+test("an Administrator adds a category in Settings and it appears (FR-SET-07)", async () => {
   await fixture();
   navigate("/settings/categories");
   mount();
@@ -641,7 +641,7 @@ test("the overdue period is one group setting; blank means never (FR-OUT-14)", a
   await waitFor(() => expect(inv.group(store.state).overdue_days ?? null).toBeNull());
 });
 
-test("an Admin sets the iPhone app link; it must be https, and blank clears it (NFR-DEP-12)", async () => {
+test("an Administrator sets the iPhone app link; it must be https, and blank clears it (NFR-DEP-12)", async () => {
   navigate("/settings/group");
   mount();
   const user = userEvent.setup();

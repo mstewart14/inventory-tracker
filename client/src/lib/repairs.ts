@@ -124,13 +124,15 @@ export function whyNotDelete(store: Store, id: string): string | null {
   if (!me) return "not signed in";
   const known = store.eventsFor("repair", id);
   const raisedBy = known.find((e) => e.type === "created")?.actor_id ?? ticket.raised_by;
-  if (raisedBy !== me) return "only an Admin can delete someone else's ticket";
+  if (raisedBy !== me) return "only an Administrator can delete someone else's ticket";
   const actors = [
     ...(ticket.notes ?? []).map((n) => n.actor_id),
     ...(ticket.photos ?? []).map((p) => p.actor_id),
     ...known.map((e) => e.actor_id),
   ];
-  return actors.every((a) => a === me) ? null : "someone else has worked on this ticket; ask an Admin to delete it";
+  return actors.every((a) => a === me)
+    ? null
+    : "someone else has worked on this ticket; ask an Administrator to delete it";
 }
 
 export const canDelete = (store: Store, id: string): boolean => whyNotDelete(store, id) === null;

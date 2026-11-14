@@ -2,7 +2,7 @@
 
 Export reads derived state; nothing here writes for it. Import is a plan, built and
 checked against a snapshot before anything is written (`plan`), then applied as
-ordinary events, authored by the server as the Admin who ran it (`apply`).
+ordinary events, authored by the server as the Administrator who ran it (`apply`).
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ BOM = "\ufeff"
 
 INJECTION_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 """A leading character a spreadsheet reads as "this cell is a formula" (CWE-1236).
-A stored name starting with one, opened by an Admin, would run as code."""
+A stored name starting with one, opened by an Administrator, would run as code."""
 
 
 def _safe(text: str) -> str:

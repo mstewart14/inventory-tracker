@@ -268,7 +268,9 @@ test("deleting your account lands on the sign-in screen and says so (FR-USR-25)"
   await user.click(await screen.findByRole("button", { name: "Delete my account…" }));
   await user.click(screen.getByRole("button", { name: "Really delete? You cannot sign in again" }));
 
-  expect(await screen.findByRole("status")).toHaveTextContent("Your account is deleted. An Admin can restore it.");
+  expect(await screen.findByRole("status")).toHaveTextContent(
+    "Your account is deleted. An Administrator can restore it.",
+  );
   expect(screen.getByLabelText("Password")).toBeInTheDocument();
   expect(calls).toContain("/me/deactivate");
   expect(calls).not.toContain("/auth/sign-out");
@@ -288,7 +290,7 @@ async function deleteAccount() {
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: "Delete my account…" }));
   await user.click(screen.getByRole("button", { name: "Really delete? You cannot sign in again" }));
-  expect(await screen.findByText("Your account is deleted. An Admin can restore it.")).toBeInTheDocument();
+  expect(await screen.findByText("Your account is deleted. An Administrator can restore it.")).toBeInTheDocument();
   return user;
 }
 
@@ -302,7 +304,7 @@ test("the deleted-account message goes once someone signs in with a link and lat
   await user.click(screen.getByRole("button", { name: "Sign out" }));
 
   expect(await screen.findByLabelText("Password")).toBeInTheDocument();
-  expect(screen.queryByText("Your account is deleted. An Admin can restore it.")).not.toBeInTheDocument();
+  expect(screen.queryByText("Your account is deleted. An Administrator can restore it.")).not.toBeInTheDocument();
 });
 
 test("the deleted-account message goes once someone signs in again", async () => {
@@ -314,5 +316,5 @@ test("the deleted-account message goes once someone signs in again", async () =>
   await user.click(screen.getByRole("button", { name: "Sign out" }));
 
   expect(await screen.findByLabelText("Password")).toBeInTheDocument();
-  expect(screen.queryByText("Your account is deleted. An Admin can restore it.")).not.toBeInTheDocument();
+  expect(screen.queryByText("Your account is deleted. An Administrator can restore it.")).not.toBeInTheDocument();
 });

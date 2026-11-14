@@ -62,7 +62,7 @@ export function Mail({ store, api }: Props) {
   if (!admin) {
     return (
       <Page title="Not found" back="/settings">
-        <p>Admins only.</p>
+        <p>Administrators only.</p>
       </Page>
     );
   }

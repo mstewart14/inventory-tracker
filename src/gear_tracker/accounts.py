@@ -1,4 +1,4 @@
-"""Accounts: who may sign in, and what an Admin may do to them.
+"""Accounts: who may sign in, and what an Administrator may do to them.
 
 The person is an entity on the event log: name, role, active. Every change is
 an event, so it is audited (FR-USR-05) and nobody is ever removed (FR-USR-06).
@@ -38,7 +38,14 @@ from gear_tracker.events import SERVER_DEVICE, NonEmpty, Strict, now_ms
 from gear_tracker.sync import Principal
 from gear_tracker.ulid import new_ulid
 
-Role = Literal["admin", "user"]
+Role = Literal["admin", "user", "outreach"]
+"""Administrator, Staff, Outreach (FR-USR-36). The stored words are older than the names people see."""
+
+ROLE_NAMES: dict[str, str] = {"admin": "Administrator", "user": "Staff", "outreach": "Outreach"}
+
+JoinLinkRole = Literal["user", "outreach"]
+"""What a standing join link may make (FR-USR-41). Never an Administrator: the link is good for anyone
+who holds it, for as long as it lives."""
 Password = Annotated[str, StringConstraints(min_length=passwords.MIN_LENGTH, max_length=passwords.MAX_LENGTH)]
 Email = Annotated[EmailStr, StringConstraints(max_length=254)]
 _email: TypeAdapter[str] = TypeAdapter(Email)
@@ -107,7 +114,7 @@ class RoleChange(Strict):
 
 
 class UserEdit(Strict):
-    """What an Admin may fix about a person (FR-USR-04). Either field, or both; at least one.
+    """What an Administrator may fix about a person (FR-USR-04). Either field, or both; at least one.
 
     `extra="forbid"` so an assistant's stray argument is refused, not silently dropped.
     """
@@ -119,16 +126,17 @@ class UserEdit(Strict):
 
 
 JoinLinkExpiryDays = Literal[1, 7, 30] | None
-"""What an Admin picks at creation (FR-USR-19): 1, 7 or 30 days, or None for a link that never expires."""
+"""What an Administrator picks at creation (FR-USR-19): 1, 7 or 30 days, or None for a link that never expires."""
 
 
 JoinLinkLabel = Annotated[str, StringConstraints(strip_whitespace=True, max_length=100)]
-"""What a link is for, in an Admin's words (FR-USR-21). Empty means unlabelled."""
+"""What a link is for, in an Administrator's words (FR-USR-21). Empty means unlabelled."""
 
 
 class CreateJoinLink(Strict):
     expiry_days: JoinLinkExpiryDays = 7
     label: JoinLinkLabel = ""
+    role: JoinLinkRole = "user"
     # Same idea as Invite.link: a template only the caller knows how to fill in. create_join_link
     # itself never reads this; it is here so the HTTP body carries what the route needs to build
     # the URL the QR encodes.
@@ -178,13 +186,14 @@ def _new_token() -> str:
 
 def _require_admin(who: Principal) -> None:
     if who.role != "admin":
-        raise Forbidden("Admins only")
+        raise Forbidden("Administrators only")
     if not who.active:
         raise Deactivated("this account has been deactivated")
 
 
 def _require_admin_or_self(who: Principal, user_id: str) -> None:
-    """Devices are the one thing a User manages for themself (FR-USR-17); an Admin does it for anyone (FR-USR-14)."""
+    """Devices are the one thing anyone manages for themself (FR-USR-17); an Administrator does it for anyone
+    (FR-USR-14)."""
     if who.user_id == user_id:
         if not who.active:
             raise Deactivated("this account has been deactivated")
@@ -266,7 +275,8 @@ def active_admins(conn: sqlite3.Connection) -> int:
 
 
 def first_admin(conn: sqlite3.Connection) -> str | None:
-    """The longest-standing active Admin. Who the server acts as when nobody said (a load from the command line)."""
+    """The longest-standing active Administrator. Who the server acts as when nobody said (a load from the
+    command line)."""
     row = conn.execute(
         """
         SELECT a.user_id FROM accounts a JOIN entities e ON e.entity_id = a.user_id AND e.entity_type = 'user'
@@ -327,14 +337,14 @@ def _open_session(
 
 
 def create_admin(conn: sqlite3.Connection, name: str, email: str, password: str, now: int | None = None) -> str:
-    """The first Admin, from the command line (FR-USR-13). Refuses once one exists; use an invite after that."""
+    """The first Administrator, from the command line (FR-USR-13). Refuses once one exists; use an invite after that."""
     if active_admins(conn):
-        raise Conflict("an Admin already exists; invite the next one from the app")
+        raise Conflict("an Administrator already exists; invite the next one from the app")
     return install_admin(conn, name, email, password, now)
 
 
 def install_admin(conn: sqlite3.Connection, name: str, email: str, password: str, now: int | None = None) -> str:
-    """An Admin made at the server with a password already set: the command line, or the seed file."""
+    """An Administrator made at the server with a password already set: the command line, or the seed file."""
     now = now_ms() if now is None else now
     passwords.check_new(password)
     user_id = new_ulid(now)
@@ -345,7 +355,7 @@ def install_admin(conn: sqlite3.Connection, name: str, email: str, password: str
         )
     except sqlite3.IntegrityError:
         raise Conflict("an account with that email already exists") from None
-    # Nobody else exists to be the actor. The first Admin creates themself.
+    # Nobody else exists to be the actor. The first Administrator creates themself.
     events.append_server(
         conn, user_id, "user", user_id, "created", {"name": name, "role": "admin", "active": True}, now
     )
@@ -353,11 +363,11 @@ def install_admin(conn: sqlite3.Connection, name: str, email: str, password: str
 
 
 def grant_admin(conn: sqlite3.Connection, email: str, now: int | None = None) -> str:
-    """Make an existing account an Admin from the server's keyboard, when nobody in the app can.
+    """Make an existing account an Administrator from the server's keyboard, when nobody in the app can.
 
     The keyboard is the credential, as it is for `reset-link`, so there is no Principal and no
     self-demotion guard (FR-USR-22) to answer to. The change is an ordinary role event, actor the
-    account itself, the way install_admin's first Admin creates themself. Returns the user id.
+    account itself, the way install_admin's first Administrator creates themself. Returns the user id.
     """
     now = now_ms() if now is None else now
     user_id = user_id_of(conn, email)
@@ -494,7 +504,7 @@ def sign_in(
 ) -> Session:
     """A lock is checked first, before any hashing (NFR-SEC-15). Counting is by email, not account,
     so an unknown email gets the same answers in the same time as a known one (NFR-SEC-19).
-    `address` is only for the Admins' mail when this locks an account (FR-USR-26).
+    `address` is only for the Administrators' mail when this locks an account (FR-USR-26).
     """
     now = now_ms() if now is None else now
     email = body.email.lower()
@@ -518,7 +528,7 @@ def sign_in(
 
 
 def unlock(conn: sqlite3.Connection, who: Principal, user_id: str, now: int | None = None) -> None:
-    """End a lock early (FR-USR-29). Admins only. The count goes too, so the next lock is 15 minutes again."""
+    """End a lock early (FR-USR-29). Administrators only. The count goes too, so the next lock is 15 minutes again."""
     _require_admin(who)
     _clear_lock(conn, email_of(conn, user_id), now_ms() if now is None else now)
 
@@ -531,12 +541,12 @@ def unlock_email(conn: sqlite3.Connection, email: str, now: int | None = None) -
 def _already_used(kind: str) -> ApiError:
     """A link that worked once already. The reason differs by kind, so the Join page can act on it:
     an invite means the account exists (offer sign in); a reset has no self-service retry
-    (an Admin must issue another). Either way the link itself is not the problem, so this is
+    (an Administrator must issue another). Either way the link itself is not the problem, so this is
     distinct from an expired or unknown link, which says nothing about why (FR-USR-12).
     """
     if kind == "invite":
         return InviteUsed("you already have an account; sign in instead")
-    return ResetUsed("this reset link has already been used; ask an Admin for a new one")
+    return ResetUsed("this reset link has already been used; ask an Administrator for a new one")
 
 
 def redeem(conn: sqlite3.Connection, body: Redeem, now: int | None = None, client: Client | None = None) -> Session:
@@ -595,7 +605,7 @@ def join(conn: sqlite3.Connection, body: Join, now: int | None = None, client: C
     """Whoever opens a standing join link makes their own account (FR-USR-19).
 
     Unlike redeem, the link is not spent: it is good until it expires or an
-    Admin revokes it. Unknown, expired, and revoked links all answer alike, so
+    Administrator revokes it. Unknown, expired, and revoked links all answer alike, so
     a made-up token learns nothing (the same rule FR-USR-12 gives redeem).
     """
     now = now_ms() if now is None else now
@@ -606,8 +616,8 @@ def join(conn: sqlite3.Connection, body: Join, now: int | None = None, client: C
     # Hashed first: a busy server refuses it, and an account made before that would be left with no password.
     password_hash = passwords.hash(body.password)
     try:
-        # The Admin who made the link is the actor, so the audit log (FR-USR-05) says who let them in.
-        user_id = _create_user(conn, link["created_by"], body.name, body.email, "user", now)
+        # The Administrator who made the link is the actor, so the audit log (FR-USR-05) says who let them in.
+        user_id = _create_user(conn, link["created_by"], body.name, body.email, link["role"], now)
     except Conflict:
         raise Conflict("an account with that email already exists; sign in instead") from None
     conn.execute("UPDATE accounts SET password_hash = ? WHERE user_id = ?", (password_hash, user_id))
@@ -624,13 +634,15 @@ def sign_out(conn: sqlite3.Connection, token: str, now: int | None = None) -> No
 
 
 def connect_assistant(conn: sqlite3.Connection, who: Principal, now: int | None = None) -> tuple[str, Session]:
-    """A token a signed-in person mints for themselves, with no Admin involved (FR-MCP-01).
+    """A token a signed-in person mints for themselves, with no Administrator involved (FR-MCP-01).
 
     It is an ordinary device session (FR-MCP-02), so it is in the device list
     and revoked like a lost device. The device_id says which one it is.
     """
     if not who.active:
         raise Deactivated("this account has been deactivated")
+    if who.role == "outreach":
+        raise Forbidden("Outreach accounts cannot use an assistant")
     now = now_ms() if now is None else now
     device_id = ASSISTANT_PREFIX + new_ulid(now)
     return device_id, _open_session(conn, who.user_id, device_id, now)
@@ -673,7 +685,7 @@ def _seen(conn: sqlite3.Connection, token_hash: str, row: sqlite3.Row, client: C
     stale = row["last_seen_at"] is None or now - row["last_seen_at"] >= SEEN_EVERY_MS
     if not (changed or stale):
         return
-    # A request with no header, or a User-Agent we cannot name, keeps what was there.
+    # A request with no header, or a Staff member-Agent we cannot name, keeps what was there.
     # Skipped rather than waited for while another write holds the lock: it never fails a request.
     conn.execute("PRAGMA busy_timeout = 0")
     try:
@@ -691,7 +703,7 @@ def _seen(conn: sqlite3.Connection, token_hash: str, row: sqlite3.Row, client: C
         conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
 
 
-# --- what Admins do ------------------------------------------------------------------------
+# --- what Administrators do ------------------------------------------------------------------------
 
 
 def invite(conn: sqlite3.Connection, who: Principal, body: Invite, now: int | None = None) -> tuple[str, str]:
@@ -711,7 +723,7 @@ def reset_link(conn: sqlite3.Connection, who: Principal, user_id: str, now: int 
 
 
 def create_join_link(conn: sqlite3.Connection, who: Principal, body: CreateJoinLink, now: int | None = None) -> dict:
-    """A standing link a whole room can use to make their own accounts (FR-USR-19). Admins only.
+    """A standing link a whole room can use to make their own accounts (FR-USR-19). Administrators only.
 
     The token is returned only here, once, like an invite link (FR-USR-12); list_join_links
     never carries it again.
@@ -722,8 +734,11 @@ def create_join_link(conn: sqlite3.Connection, who: Principal, body: CreateJoinL
     token = _new_token()
     expires_at = None if body.expiry_days is None else now + body.expiry_days * DAY_MS
     conn.execute(
-        "INSERT INTO join_links (id, token_hash, created_by, created_at, expires_at, label) VALUES (?, ?, ?, ?, ?, ?)",
-        (link_id, _hash_token(token), who.user_id, now, expires_at, body.label),
+        """
+        INSERT INTO join_links (id, token_hash, created_by, created_at, expires_at, label, role)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (link_id, _hash_token(token), who.user_id, now, expires_at, body.label, body.role),
     )
     return {
         "id": link_id,
@@ -732,6 +747,7 @@ def create_join_link(conn: sqlite3.Connection, who: Principal, body: CreateJoinL
         "created_at": now,
         "expires_at": expires_at,
         "label": body.label,
+        "role": body.role,
     }
 
 
@@ -739,13 +755,13 @@ def list_join_links(conn: sqlite3.Connection, who: Principal, now: int | None = 
     """Live links: not revoked, not expired. Who made each one, and when it was made and dies.
 
     Never the token: once shown at creation, a standing link is otherwise
-    known only by the id an Admin uses to revoke it.
+    known only by the id an Administrator uses to revoke it.
     """
     _require_admin(who)
     now = now_ms() if now is None else now
     rows = conn.execute(
         """
-        SELECT id, created_by, created_at, expires_at, label FROM join_links
+        SELECT id, created_by, created_at, expires_at, label, role FROM join_links
         WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)
         ORDER BY created_at DESC
         """,
@@ -762,13 +778,14 @@ def list_join_links(conn: sqlite3.Connection, who: Principal, now: int | None = 
                 "created_at": row["created_at"],
                 "expires_at": row["expires_at"],
                 "label": row["label"],
+                "role": row["role"],
             }
         )
     return out
 
 
 def rename_join_link(conn: sqlite3.Connection, who: Principal, link_id: str, label: str) -> None:
-    """Label a link, or change the label it already has (FR-USR-21). Admins only.
+    """Label a link, or change the label it already has (FR-USR-21). Administrators only.
 
     The token is unchanged: whatever was printed or passed around still works.
     """
@@ -779,7 +796,7 @@ def rename_join_link(conn: sqlite3.Connection, who: Principal, link_id: str, lab
 
 
 def revoke_join_link(conn: sqlite3.Connection, who: Principal, link_id: str, now: int | None = None) -> None:
-    """Admins only. A revoked link answers the same "not valid" as an unknown or expired one."""
+    """Administrators only. A revoked link answers the same "not valid" as an unknown or expired one."""
     _require_admin(who)
     now = now_ms() if now is None else now
     if conn.execute("SELECT 1 FROM join_links WHERE id = ?", (link_id,)).fetchone() is None:
@@ -787,7 +804,7 @@ def revoke_join_link(conn: sqlite3.Connection, who: Principal, link_id: str, now
     conn.execute("UPDATE join_links SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", (now, link_id))
 
 
-def _guard_last_admin(conn: sqlite3.Connection, user_id: str, message: str = "this is the last Admin") -> None:
+def _guard_last_admin(conn: sqlite3.Connection, user_id: str, message: str = "this is the last Administrator") -> None:
     """FR-USR-03. Nobody locks the group out."""
     user = get_user(conn, user_id)
     if user["role"] == "admin" and user["active"] and active_admins(conn) == 1:
@@ -823,25 +840,32 @@ def edit_user(conn: sqlite3.Connection, who: Principal, user_id: str, body: User
 
 
 def set_role(conn: sqlite3.Connection, who: Principal, user_id: str, role: Role, now: int | None = None) -> None:
+    """Change what a person may do (FR-USR-36).
+
+    A move into or out of Outreach ends every session the person has (FR-USR-42). A device that was
+    Staff holds the whole inventory, and one that was Outreach holds none of it, so neither carries
+    on as it was: the person signs in again and the device starts from what the new role may see.
+    """
     _require_admin(who)
     now = now_ms() if now is None else now
-    if role != "admin":
-        if user_id == who.user_id:
-            # FR-USR-22. The Users page goes with the role, so the mistake cannot be undone by the
-            # person who made it. Another Admin does it, or `gear-admin grant-admin` at the server.
-            raise Conflict("you cannot drop your own Admin role; another Admin must do it")
-        # The guard and the write are one transaction, so two concurrent demotions of the last
-        # two Admins cannot both read "someone else is still one" before either commits.
-        conn.execute("BEGIN IMMEDIATE")
-        try:
+    if role != "admin" and user_id == who.user_id:
+        # FR-USR-22. The Users page goes with the role, so the mistake cannot be undone by the
+        # person who made it. Another Administrator does it, or `gear-admin grant-admin` at the server.
+        raise Conflict("you cannot drop your own Administrator role; another Administrator must do it")
+    # The guard and the write are one transaction, so two concurrent demotions of the last
+    # two Administrators cannot both read "someone else is still one" before either commits.
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        old = get_user(conn, user_id)["role"]
+        if role != "admin":
             _guard_last_admin(conn, user_id)
-            _change(conn, who.user_id, user_id, "role", role, now)
-            conn.execute("COMMIT")
-        except BaseException:
-            conn.execute("ROLLBACK")
-            raise
-        return
-    _change(conn, who.user_id, user_id, "role", role, now)
+        _change(conn, who.user_id, user_id, "role", role, now)
+        if old != role and "outreach" in (old, role):
+            conn.execute("UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL", (now, user_id))
+        conn.execute("COMMIT")
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
 
 
 def deactivate(conn: sqlite3.Connection, who: Principal, user_id: str, now: int | None = None) -> None:
@@ -851,17 +875,17 @@ def deactivate(conn: sqlite3.Connection, who: Principal, user_id: str, now: int 
     _require_admin(who)
     if user_id == who.user_id:
         # FR-USR-23, and FR-USR-22's reason: signing yourself out of the app is not something you
-        # can take back. Another Admin ends an account; to leave the group, delete your own from
+        # can take back. Another Administrator ends an account; to leave the group, delete your own from
         # Settings (deactivate_self), which says what it does first.
-        raise Conflict("you cannot deactivate your own account; another Admin must do it")
+        raise Conflict("you cannot deactivate your own account; another Administrator must do it")
     _deactivate(conn, who.user_id, user_id, now_ms() if now is None else now)
 
 
 def deactivate_self(conn: sqlite3.Connection, who: Principal, token: str, now: int | None = None) -> None:
-    """Delete my account (FR-USR-25): the same deactivation an Admin does, asked for by the person.
+    """Delete my account (FR-USR-25): the same deactivation an Administrator does, asked for by the person.
 
     Their name stays on every record. This device is signed out now, with their assistants. Their
-    other devices keep one final push (FR-OFF-06), then sign out at their next sync. An Admin can
+    other devices keep one final push (FR-OFF-06), then sign out at their next sync. An Administrator can
     reactivate them.
     """
     _deactivate(
@@ -869,7 +893,7 @@ def deactivate_self(conn: sqlite3.Connection, who: Principal, token: str, now: i
         who.user_id,
         who.user_id,
         now_ms() if now is None else now,
-        last_admin="you are the last Admin; make someone else an Admin first",
+        last_admin="you are the last Administrator; make someone else an Administrator first",
         token=token,
     )
 
@@ -879,7 +903,7 @@ def _deactivate(
     actor_id: str,
     user_id: str,
     now: int,
-    last_admin: str = "this is the last Admin",
+    last_admin: str = "this is the last Administrator",
     token: str | None = None,
 ) -> None:
     """Every deactivation, whoever asks. The guard and the write are one transaction, for the same
@@ -929,7 +953,7 @@ _LATEST_PER_DEVICE = """
 def list_devices(conn: sqlite3.Connection, who: Principal, user_id: str) -> list[dict[str, Any]]:
     """The devices a user is signed in on: one row per device with an open session, last seen first.
 
-    A User sees their own (FR-USR-17); an Admin sees anyone's (FR-USR-14). `label` and
+    A User sees their own (FR-USR-17); an Administrator sees anyone's (FR-USR-14). `label` and
     `client_version` are null when unknown (FR-USR-32, FR-USR-33, FR-USR-34).
     """
     _require_admin_or_self(who, user_id)
@@ -953,7 +977,7 @@ def client_versions(conn: sqlite3.Connection, who: Principal) -> list[dict[str, 
     """Each client version still signed in, with how many devices use it and when one was last seen
     (NFR-DEP-16). Assistants are left out.
     A null version is a session not seen since versions were recorded, or a client too old to send one.
-    Admins only."""
+    Administrators only."""
     _require_admin(who)
     rows = conn.execute(
         f"""
@@ -969,7 +993,7 @@ def client_versions(conn: sqlite3.Connection, who: Principal) -> list[dict[str, 
 def revoke_device(
     conn: sqlite3.Connection, who: Principal, user_id: str, device_id: str, now: int | None = None
 ) -> list[dict[str, Any]]:
-    """A lost or sold device. A User revokes their own (FR-USR-17); an Admin revokes anyone's (FR-USR-14).
+    """A lost or sold device. A User revokes their own (FR-USR-17); an Administrator revokes anyone's (FR-USR-14).
 
     Its sessions end; the account and its history are untouched (FR-OFF-07).
     """

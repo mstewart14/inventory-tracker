@@ -437,7 +437,7 @@ export function ItemPage({ store, id }: Props) {
             {mergedFrom.length > 0 && (
               <>
                 <dt>Merged from</dt>
-                {/* One line each, so the record it came from is a tap away and an Admin can put it back. */}
+                {/* One line each, so the record it came from is a tap away and an Administrator can put it back. */}
                 {mergedFrom.map((a) => (
                   <dd key={a} className="merged-line">
                     <button className="link" type="button" onClick={() => guard(() => navigate(`/items/${a}`))}>
@@ -683,7 +683,7 @@ function AddAnotherUnit({ store, genericId }: { store: Store; genericId: string 
  * (FR-INV-04) is the one for gear written off: that item stays under "show
  * retired". This one does not come back.
  *
- * An Admin's, and only an item that is in. A generic waits until its units have
+ * An Administrator's, and only an item that is in. A generic waits until its units have
  * gone, so nothing is left under a name that is not there. Two taps, because
  * there is no undo (NFR-USE-07).
  */
@@ -706,7 +706,7 @@ function DeleteItem({ store, it }: { store: Store; it: Item }) {
 
 /**
  * Lost, not written off (FR-INV-19). One tap: the next scan or check-in clears it. Any
- * signed-in user, not just an Admin: gear goes astray weekly, unlike Delete and Retire.
+ * signed-in user, not just an Administrator: gear goes astray weekly, unlike Delete and Retire.
  * It leaves Edit once marked so the badge shows straight away.
  */
 function MarkMissing({ store, it, onDone }: { store: Store; it: Item; onDone: () => void }) {

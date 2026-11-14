@@ -127,7 +127,7 @@ export function Join({ store, api, onJoined, onSignOut, native = NATIVE }: Props
             </>
           )
         ) : !token && !link ? (
-          <p>This link is missing its token. Ask an Admin for a new one.</p>
+          <p>This link is missing its token. Ask an Administrator for a new one.</p>
         ) : blocked === "invite" || blocked === "exists" ? (
           <>
             <p>You already have an account. Sign in instead.</p>
@@ -136,7 +136,7 @@ export function Join({ store, api, onJoined, onSignOut, native = NATIVE }: Props
             </button>
           </>
         ) : blocked === "reset" ? (
-          <p role="alert">This reset link has already been used. Ask an Admin for a new one.</p>
+          <p role="alert">This reset link has already been used. Ask an Administrator for a new one.</p>
         ) : (
           <>
             <p>

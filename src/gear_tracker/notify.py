@@ -1,5 +1,5 @@
 """Email a person chooses to get: a found report, a new repair ticket, a new account. And one they
-do not choose: every Admin hears when an account is locked (FR-USR-26), at most once an hour.
+do not choose: every Administrator hears when an account is locked (FR-USR-26), at most once an hour.
 
 One message per event, no digest. Optional twice over: nothing is sent unless
 a category is turned on (FR-USR-18), and nothing is sent when no SMTP account
@@ -74,7 +74,7 @@ def _link(group: dict[str, Any], path: str) -> str | None:
 
 
 def _subscribers(conn: sqlite3.Connection, category: Category, exclude_user_id: str | None = None) -> list[str]:
-    """Active users' email addresses, subscribed to this category, minus whoever caused the event."""
+    """Active Staff and Administrators' email addresses, subscribed to this category, minus whoever caused the event."""
     rows = conn.execute(
         """
         SELECT p.user_id AS user_id, a.email AS email, e.state AS state
@@ -89,14 +89,16 @@ def _subscribers(conn: sqlite3.Connection, category: Category, exclude_user_id: 
     for r in rows:
         if r["user_id"] == exclude_user_id:
             continue
-        if not json.loads(r["state"]).get("active", True):
+        user = json.loads(r["state"])
+        # Outreach is another organization: a found report or a new account is not theirs to hear (FR-USR-39).
+        if not user.get("active", True) or user.get("role") == "outreach":
             continue
         out.append(r["email"])
     return out
 
 
 def _admins(conn: sqlite3.Connection) -> list[str]:
-    """Every active Admin's email address."""
+    """Every active Administrator's email address."""
     rows = conn.execute(
         """
         SELECT a.email FROM accounts a JOIN entities e ON e.entity_id = a.user_id AND e.entity_type = 'user'
@@ -252,8 +254,8 @@ def hold_moved(conn: sqlite3.Connection, hold_id: str, old: Any, new: Any, actor
 
 
 LOCK_MAIL_EVERY_MS = 3_600_000
-"""At most one lock mail an hour (FR-USR-30). Every Admin gets the same one, so this caps each Admin's
-mail too. Otherwise anyone who can reach sign-in can fill the Admins' inboxes."""
+"""At most one lock mail an hour (FR-USR-30). Every Administrator gets the same one, so this caps each Administrator's
+mail too. Otherwise anyone who can reach sign-in can fill the Administrators' inboxes."""
 
 _lock_mail: dict[str, tuple[int | None, int]] = {}
 """Per database file: when the last lock mail went, and how many locks since then were not mailed.
@@ -270,7 +272,8 @@ def account_locked(conn: sqlite3.Connection, email: str, wait: str, address: str
 
 
 def _mail_lock(path: str, email: str, wait: str, address: str | None, now: int) -> None:
-    """Every active Admin, whatever their categories: this is about the group's security, not a choice of news."""
+    """Every active Administrator, whatever their categories: this is about the group's security, not a choice
+    of news."""
     try:
         conn = connect(path)
     except sqlite3.Error as exc:
@@ -300,7 +303,7 @@ def _mail_lock(path: str, email: str, wait: str, address: str | None, now: int) 
     if skipped:
         were = "lock was" if skipped == 1 else "locks were"
         lines.append(f"{skipped} more {were} not mailed since the last of these.")
-    lines += ["", "It unlocks by itself. An Admin can unlock it sooner from Settings > Users."]
+    lines += ["", "It unlocks by itself. An Administrator can unlock it sooner from Settings > Users."]
     link = _link(group, "/settings/users")
     if link:
         lines += ["", link]

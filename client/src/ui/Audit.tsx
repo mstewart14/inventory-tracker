@@ -69,7 +69,7 @@ function Row({ state, event, item, summary }: { state: State; event: ServerEvent
 }
 
 /**
- * The whole log on one screen, for an Admin (FR-USR-24): what changed, who did
+ * The whole log on one screen, for an Administrator (FR-USR-24): what changed, who did
  * it, and when, narrowed by event, person, and a range of days.
  *
  * A device keeps 90 days (NFR-DATA-03), so this is always the server's answer
@@ -112,7 +112,7 @@ export function Audit({ store, api }: Props) {
   if (!admin) {
     return (
       <Page title="Not found" back="/settings">
-        <p>Admins only.</p>
+        <p>Administrators only.</p>
       </Page>
     );
   }

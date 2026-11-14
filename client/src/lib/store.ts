@@ -76,7 +76,7 @@ export interface Meta {
   stock_check?: StockCheck;
   /** The categories the last new item took, so a run of tents costs no taps. A device setting, not a record. */
   last_category_ids?: string[];
-  /** Upcoming events from the calendar feeds an Admin added (FR-RES-20), refreshed on every sync.
+  /** Upcoming events from the calendar feeds an Administrator added (FR-RES-20), refreshed on every sync.
    * Reference data the server owns, not a record made here. */
   calendar_events?: CalendarEvent[];
   /** Who each live hold is for, as the server last sent it, whole (FR-HLD-17). Never part of the log. */
@@ -156,7 +156,12 @@ export class Store {
       snapshot?: State;
     };
     const { snapshot = {}, ...rest } = raw;
-    const meta: Meta = { device_id: newUlid(now()), device_seq: 0, clock_offset: 0, ...rest };
+    const meta: Meta = {
+      device_id: newUlid(now()),
+      device_seq: 0,
+      clock_offset: 0,
+      ...rest,
+    };
     if (!raw.device_id) metaStore.put(meta.device_id, "device_id");
     await done(tx);
 
@@ -186,7 +191,7 @@ export class Store {
   }
 
   /**
-   * Is the signed-in person an Admin?
+   * Is the signed-in person an Administrator?
    *
    * Read from the replayed state, not from `meta.user`, which is written once at sign-in and never
    * again. A role granted or dropped on the server arrives as a user event like any other, so this
@@ -198,6 +203,52 @@ export class Store {
     if (!user) return false;
     const role = this.state.user?.[user.id]?.role;
     return (typeof role === "string" ? role : user.role) === "admin";
+  }
+
+  /** Is the signed-in person from another organization (FR-USR-36)? Their device is sent no log, so there
+   * is no replayed role to read: a move into or out of Outreach ends the session, and sign-in says which. */
+  get outreach(): boolean {
+    return this.meta.user?.role === "outreach";
+  }
+
+  /** Does this device hold a copy of the inventory, or work waiting to go up? */
+  get holdsData(): boolean {
+    return this.meta.cursor !== undefined || this.events.size > 0 || Object.keys(this.snapshot).length > 0;
+  }
+
+  /**
+   * Drop this device's whole copy: the snapshot, every event sent or not, queued photos, and who holds
+   * are for. For a device whose account is now Outreach (FR-VIS-03, FR-USR-42): it may hold nothing it
+   * is not shown. Sign-in, the device's id and its place in its own sequence stay.
+   */
+  async forget(): Promise<void> {
+    const tx = this.db.transaction(["meta", "events", "photos"], "readwrite");
+    tx.objectStore("events").clear();
+    tx.objectStore("photos").clear();
+    const metaStore = tx.objectStore("meta");
+    const dropped = [
+      SNAPSHOT_KEY,
+      "cursor",
+      "log_id",
+      "snapshot_version",
+      "last_sync_at",
+      "session_event",
+      "session_reservation_id",
+      "session_event_at",
+      "session_waiting",
+      "session_waiting_user",
+      "stock_check",
+      "last_category_ids",
+      "calendar_events",
+      "hold_handles",
+      "pending_handles",
+    ];
+    for (const key of dropped) metaStore.delete(key);
+    await done(tx);
+    this.events.clear();
+    this.snapshot = {};
+    for (const key of dropped) delete (this.meta as unknown as Record<string, unknown>)[key];
+    this.recompute();
   }
 
   /** What this device knows happened to one entity, in replay order. History, not state: the last 90 days at most. */
@@ -333,7 +384,18 @@ export class Store {
   static outgoing(event: StoredEvent): OutgoingEvent {
     const { id, entity_type, entity_id, type, actor_id, device_id, device_seq, occurred_at, clock_offset, payload } =
       event;
-    return { id, entity_type, entity_id, type, actor_id, device_id, device_seq, occurred_at, clock_offset, payload };
+    return {
+      id,
+      entity_type,
+      entity_id,
+      type,
+      actor_id,
+      device_id,
+      device_seq,
+      occurred_at,
+      clock_offset,
+      payload,
+    };
   }
 
   /**

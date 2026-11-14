@@ -182,7 +182,7 @@ test("the raiser deletes an untouched ticket with two taps, and it leaves every 
   expect(rep.openRepairs(store.state, tent).map((r) => r.id)).toEqual([ticket]);
 });
 
-test("once someone else comments, only an Admin can delete the ticket (FR-REP-12, FR-REP-13)", async () => {
+test("once someone else comments, only an Administrator can delete the ticket (FR-REP-12, FR-REP-13)", async () => {
   await store.setMeta({ user: carol });
   const mine = await rep.raiseTicket(store, tent, "pole cracked");
   expect(rep.canDelete(store, mine)).toBe(true);

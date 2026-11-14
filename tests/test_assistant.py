@@ -111,14 +111,14 @@ def logged(db_path):
 
 @pytest.fixture
 def admin_id(db_path) -> str:
-    """A real, active Admin, distinct from Alice (a User) in the inventory fixture (FR-USR-03).
+    """A real, active Administrator, distinct from Alice (a User) in the inventory fixture (FR-USR-03).
 
     A real session too, on the same device_id the `admin` Principal below uses, so list_devices
     and revoke_device (FR-USR-14) have a real row to find, the way they would for a token minted
     through /assistant/connect.
     """
     with open_db(db_path) as conn:
-        user_id = accounts.install_admin(conn, "Admin Alex", "alex@example.org", "correct horse battery staple")
+        user_id = accounts.install_admin(conn, "Administrator Alex", "alex@example.org", "correct horse battery staple")
         accounts._open_session(conn, user_id, "mcp-01CCCCCCCCCCCCCCCCCCCCCCCC", events.now_ms())
         return user_id
 
@@ -130,7 +130,7 @@ def admin(admin_id) -> Principal:
 
 @pytest.fixture
 def admin_tools(db_path, admin, inventory):
-    """Call the tool functions as an Admin's assistant."""
+    """Call the tool functions as an Administrator's assistant."""
     with assistant.acting_as(admin, db_path):
         yield inventory
 
@@ -140,7 +140,7 @@ def admin_tools(db_path, admin, inventory):
 
 @pytest.fixture
 def real(db_path):
-    """The real authenticator, with an Admin who has signed in."""
+    """The real authenticator, with an Administrator who has signed in."""
     with open_db(db_path) as conn:
         accounts.create_admin(conn, "Alex", "alex@example.org", "correct horse")
     client = TestClient(create_app(db_path))
@@ -189,7 +189,7 @@ def test_a_bad_token_is_401_and_a_phones_token_is_403(real):
         assert refused.status_code == 401
         assert refused.json()["error"] == "unauthorized"
 
-        # The Admin's own phone token is signed in, and still not an assistant:
+        # The Administrator's own phone token is signed in, and still not an assistant:
         # a phone keeps its own device_seq, and the server keeps an assistant's.
         phone = client.post(
             "/mcp", headers={**RPC, **dict(client.headers)}, json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
@@ -224,7 +224,7 @@ def test_the_tool_list_is_a_user_and_an_admin_together(db_path):
         ).json()
     names = {tool["name"] for tool in listed["result"]["tools"]}
     assert names == {tool.__name__ for tool in assistant.TOOLS}
-    # An Admin's token unlocks an Admin's tools too (FR-MCP-10): the same roster is always
+    # An Administrator's token unlocks an Administrator's tools too (FR-MCP-10): the same roster is always
     # listed, and it is each tool's own call that refuses a User at the time it is used.
     for admin_only in ("list_users", "get_mail", "get_group", "delete_item", "print_codes", "preview_csv_import"):
         assert admin_only in names
@@ -537,7 +537,7 @@ def test_delete_ticket_takes_an_untouched_ticket_of_your_own_off_every_list(db_p
     touched = assistant.raise_ticket(tools["stove"], "leg bent")["ticket_id"]
     with assistant.acting_as(admin, db_path):
         assistant.comment_ticket(touched, "on it")
-    with pytest.raises(BadRequest, match="ask an Admin"):
+    with pytest.raises(BadRequest, match="ask an Administrator"):
         assistant.delete_ticket(touched)
     assert entity(db_path, "repair", touched)["state"] == "open"
     with assistant.acting_as(admin, db_path):
@@ -623,7 +623,7 @@ def test_unassign_code_releases_it_and_needs_one_bound_first(db_path, tools):
 def test_deleting_merging_and_unmerging_are_admin_only(tools):
     with pytest.raises(Forbidden) as exc:
         assistant.delete_item(tools["stove"])
-    assert exc.value.message == "Admins only"
+    assert exc.value.message == "Administrators only"
     with pytest.raises(Forbidden):
         assistant.merge_items(tools["t1"], tools["t2"])
     with pytest.raises(Forbidden):
@@ -1083,7 +1083,7 @@ def test_a_quantity_and_a_named_item_are_not_interchangeable(tools):
 def test_admin_tools_refuse_a_user_the_same_way_the_app_does(tools):
     with pytest.raises(Forbidden) as exc:
         assistant.list_users()
-    assert exc.value.message == "Admins only"
+    assert exc.value.message == "Administrators only"
     with pytest.raises(Forbidden):
         assistant.get_mail()
     with pytest.raises(Forbidden):
@@ -1108,10 +1108,10 @@ def test_admin_tools_refuse_a_user_the_same_way_the_app_does(tools):
         assistant.apply_csv_import("id,kind,name\n")
 
     # Group settings are an event the sync layer itself gates for `setting` (sync._check_entity_rules),
-    # so this one is refused with the app's own rejection reason rather than "Admins only".
+    # so this one is refused with the app's own rejection reason rather than "Administrators only".
     with pytest.raises(BadRequest) as settings_exc:
         assistant.set_group(assistant.GroupFields(name="10th Richmond"))
-    assert settings_exc.value.message == "settings are changed by an Admin"
+    assert settings_exc.value.message == "settings are changed by an Administrator"
 
 
 def test_a_user_can_see_their_own_devices_but_not_anyone_elses(tools):
@@ -1163,7 +1163,7 @@ def test_an_admin_invites_promotes_and_deactivates_people(admin_tools, admin_id)
     reactivated = assistant.set_user_active(bea_id, True)
     assert reactivated["user"]["active"] is True
 
-    # The last Admin cannot be deactivated or demoted (FR-USR-03): it holds once Bea is a User again.
+    # The last Administrator cannot be deactivated or demoted (FR-USR-03): it holds once Bea is a User again.
     assistant.set_user_role(bea_id, "user")
     with pytest.raises(Conflict):
         assistant.set_user_active(admin_id, False)

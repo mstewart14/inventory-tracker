@@ -481,7 +481,7 @@ test("the record's changes are listed with old and new values (FR-USR-09)", asyn
   ]);
 });
 
-test("an Admin merges a duplicate into the item it doubles, and lands on the survivor (FR-INV-13)", async () => {
+test("an Administrator merges a duplicate into the item it doubles, and lands on the survivor (FR-INV-13)", async () => {
   const other = await act.createItem(store, { name: "Tent 1 (again)" });
   navigate(`/items/${other}`);
   renderInShell(<ItemPage store={store} id={other} />);
@@ -516,7 +516,7 @@ test("the survivor names what was merged into it, and a user sees no merge butto
   renderInShell(<ItemPage store={store} id={tent} />);
   const line = screen.getByText("Merged from").nextElementSibling as HTMLElement;
   expect(line).toHaveTextContent("Tent 1 (again)");
-  // The record it came from is a tap away; only an Admin may put it back (FR-INV-13).
+  // The record it came from is a tap away; only an Administrator may put it back (FR-INV-13).
   expect(within(line).queryByRole("button", { name: "Unmerge" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /duplicate record/ })).not.toBeInTheDocument();
 
@@ -524,7 +524,7 @@ test("the survivor names what was merged into it, and a user sees no merge butto
   expect(location.pathname).toBe(`/items/${other}`);
 });
 
-test("an Admin undoes a merge from the survivor's own page (FR-INV-13)", async () => {
+test("an Administrator undoes a merge from the survivor's own page (FR-INV-13)", async () => {
   const other = await act.createItem(store, { name: "Tent 1 (again)" });
   const third = await act.createItem(store, { name: "Tent 1 (third)" });
   await act.mergeItem(store, other, tent);
@@ -546,7 +546,7 @@ test("two of the same gear are grouped under one name, and both stay (FR-INV-30)
   await store.setMeta({ user: carol });
   renderInShell(<ItemPage store={store} id={tent} />);
 
-  // Grouping is an edit, so a user may do it; merging is still an Admin's (FR-INV-13, FR-INV-30).
+  // Grouping is an edit, so a user may do it; merging is still an Administrator's (FR-INV-13, FR-INV-30).
   expect(screen.queryByRole("button", { name: /duplicate record/ })).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Group with another item…" }));
   await user.type(screen.getByLabelText("Search"), "tent");
@@ -689,7 +689,7 @@ test("a group of two needs two different numbers (FR-INV-23, FR-INV-30)", async 
   expect(item(store.state, tent)?.parent_id).toBeUndefined();
 });
 
-test("an Admin deletes a record made in error, in two taps from Edit (FR-INV-32)", async () => {
+test("an Administrator deletes a record made in error, in two taps from Edit (FR-INV-32)", async () => {
   // Arrived from a filtered inventory list, the way ItemList's row link does.
   navigate("/items?status=in");
   navigate(`/items/${tent}`);
@@ -715,7 +715,7 @@ test("a deleted item's page says so and offers nothing (FR-INV-32)", async () =>
   expect(screen.queryByRole("button", { name: "Delete for good…" })).not.toBeInTheDocument();
 });
 
-test("only an Admin may delete, and only an item that is in (FR-INV-32)", async () => {
+test("only an Administrator may delete, and only an item that is in (FR-INV-32)", async () => {
   await mv.checkOut(store, tent, {});
   const { unmount } = renderInShell(<ItemPage store={store} id={tent} />);
   await user.click(screen.getByRole("button", { name: "Edit" }));

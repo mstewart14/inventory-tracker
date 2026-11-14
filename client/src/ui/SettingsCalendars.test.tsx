@@ -7,7 +7,7 @@ import type { Store } from "../lib/store";
 import { openStore } from "./codeTestKit";
 import { SettingsCalendars } from "./SettingsCalendars";
 
-// Calendar feeds an Admin points at the group's own calendar (FR-RES-20). A fake server answers.
+// Calendar feeds an Administrator points at the group's own calendar (FR-RES-20). A fake server answers.
 const T0 = 1_756_684_800_000;
 let store: Store;
 let calls: string[];
@@ -59,7 +59,7 @@ beforeEach(async () => {
 const user = userEvent.setup();
 const mount = () => render(<SettingsCalendars store={store} api={createApi({ fetch: fetchFake, token: () => "t" })} />);
 
-test("an Admin sees the feeds already added", async () => {
+test("an Administrator sees the feeds already added", async () => {
   mount();
   expect(await screen.findByText("Troop calendar")).toBeInTheDocument();
   expect(screen.getByText("calendar.example.org/troop.ics", { exact: false })).toBeInTheDocument();

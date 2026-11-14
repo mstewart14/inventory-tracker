@@ -184,7 +184,7 @@ def test_events_appear_in_bootstrap_and_pull(db, db_path, ics_server):
     assert any(e["summary"] == "Troop: Spring Camp" for e in pulled["calendar_events"])
 
 
-# --- routes: Admin only -----------------------------------------------------------------------
+# --- routes: Administrator only -----------------------------------------------------------------------
 
 
 def authenticate(request: Request, _conn) -> Principal | None:

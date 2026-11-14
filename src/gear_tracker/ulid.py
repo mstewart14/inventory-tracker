@@ -1,7 +1,7 @@
 """ULIDs: 48 bits of millisecond time, 80 bits of randomness, Crockford base32.
 
 Events are minted on devices, so the server mostly checks these. It mints its
-own only for events it originates, such as the first Admin at install.
+own only for events it originates, such as the first Administrator at install.
 """
 
 from __future__ import annotations
