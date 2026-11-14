@@ -297,6 +297,35 @@ def hold_approved(conn: sqlite3.Connection, hold_id: str, actor_id: str) -> None
     _tell_hold(conn, hold_id, actor_id, "hold request approved", first)
 
 
+def _when(at: Any) -> str:
+    """2026-11-20T14:30 as mail says it: 2026-11-20 at 14:30."""
+    return str(at or "").replace("T", " at ")
+
+
+def collection_booked(conn: sqlite3.Connection, hold_id: str, actor_id: str) -> None:
+    """Outreach said how an approved hold will be collected (FR-HLD-54). Every Administrator hears, and
+    whoever is named on it. The drop-off point is not in the mail: it can say where a client will be,
+    and mail cannot be taken back (FR-HLD-53)."""
+    hold = derived.get_entity(conn, "hold", hold_id) or {}
+    if hold.get("collection") == "delivery":
+        subject = "delivery booked"
+        first = (
+            f"A delivery was booked for {_when(hold.get('delivery_at'))}. The drop-off point is in the app."
+            " A Staff member needs to take it."
+        )
+    else:
+        subject, first = "collection booked", "A hold's goods will be collected in person."
+    _tell_hold(conn, hold_id, actor_id, subject, first, admins=True)
+
+
+def delivery_taken(conn: sqlite3.Connection, hold_id: str, actor_id: str) -> None:
+    """A Staff member took a delivery (FR-HLD-55). The others named on the hold are told who."""
+    hold = derived.get_entity(conn, "hold", hold_id) or {}
+    who = (derived.get_entity(conn, "user", actor_id) or {}).get("name", "Someone")
+    first = f"{who} will make the delivery booked for {_when(hold.get('delivery_at'))}."
+    _tell_hold(conn, hold_id, actor_id, "delivery taken", first)
+
+
 LOCK_MAIL_EVERY_MS = 3_600_000
 """At most one lock mail an hour (FR-USR-30). Every Administrator gets the same one, so this caps each Administrator's
 mail too. Otherwise anyone who can reach sign-in can fill the Administrators' inboxes."""

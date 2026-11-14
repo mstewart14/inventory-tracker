@@ -28,16 +28,20 @@ export async function sync(store: Store, api: Api, now: () => number = Date.now)
       });
     // Who each new hold is for goes up beside the events, never in them (FR-HLD-17).
     const handles = Object.entries(store.meta.pending_handles ?? {}).map(([hold_id, handle]) => ({ hold_id, handle }));
-    if (pending.length > 0 || handles.length > 0) {
+    // So does where a delivery booked here goes (FR-HLD-53).
+    const places = Object.entries(store.meta.pending_drop_offs ?? {}).map(([hold_id, place]) => ({ hold_id, place }));
+    if (pending.length > 0 || handles.length > 0 || places.length > 0) {
       const { data, offset, round_trip } = await api.push(
         store.meta.device_id,
         now(),
         pending.map((e) => Store.outgoing(e)),
         store.meta.round_trip_ms,
         handles,
+        places,
       );
       await stampRoundTrip(offset, round_trip);
       await handlesTaken(store, data.hold_handles_taken);
+      await dropOffsTaken(store, data.hold_drop_offs_taken);
       if (store.meta.log_id !== undefined && data.log_id !== store.meta.log_id) replaced = true;
       const pushed = await store.pushed(data.accepted, data.rejected);
       unidentified += pushed.unidentified;
@@ -124,6 +128,16 @@ async function handlesTaken(store: Store, taken: string[] | undefined): Promise<
   });
 }
 
+/** The server answered for these holds' drop-off points, so they stop waiting here. */
+async function dropOffsTaken(store: Store, taken: string[] | undefined): Promise<void> {
+  const waiting = store.meta.pending_drop_offs;
+  if (!taken?.length || !waiting) return;
+  const left = Object.fromEntries(Object.entries(waiting).filter(([id]) => !taken.includes(id)));
+  await store.setMeta({
+    pending_drop_offs: Object.keys(left).length > 0 ? left : undefined,
+  });
+}
+
 async function bootstrap(store: Store, api: Api): Promise<void> {
   const { data, offset, round_trip } = await api.bootstrap();
   // The snapshot, cursor and log_id all belong together (see Store.bootstrap); the offset and
@@ -137,6 +151,7 @@ async function bootstrap(store: Store, api: Api): Promise<void> {
     // snapshot: the server owns it and replaces it whole, there is no history to replay.
     calendar_events: data.calendar_events,
     ...(data.hold_handles ? { hold_handles: data.hold_handles } : {}),
+    ...(data.hold_drop_offs ? { hold_drop_offs: data.hold_drop_offs } : {}),
   });
 }
 
@@ -151,6 +166,7 @@ async function pull(store: Store, api: Api): Promise<void> {
       calendar_events: data.calendar_events,
       // Whole, every time: a handle the server has deleted is gone from here too (FR-HLD-17).
       ...(data.hold_handles ? { hold_handles: data.hold_handles } : {}),
+      ...(data.hold_drop_offs ? { hold_drop_offs: data.hold_drop_offs } : {}),
     });
     // A non-empty page must move the cursor past where we asked from; one that does not is a
     // server bug, not something a retry fixes, so this stops the loop instead of spinning forever.

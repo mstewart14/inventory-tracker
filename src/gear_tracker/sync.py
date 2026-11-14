@@ -49,6 +49,9 @@ class PushBody(Strict):
     hold_handles: list[Any] = []
     """Who each new hold is for, `{hold_id, handle}` (FR-HLD-02). Beside the events, never in them: the
     log cannot forget a handle, and this must be forgotten when the hold ends (FR-HLD-17)."""
+    hold_drop_offs: list[Any] = []
+    """Where each delivery booked on this device goes, `{hold_id, place}` (FR-HLD-61). Beside the events
+    for the reason a handle is (FR-HLD-53)."""
     round_trip_ms: Annotated[int, Field(ge=0)] | None = None
     """The device's last measured round trip (client/src/lib/clock.ts measureOffset halves this to
     get its own offset). Omitted by an older client, or before the device has ever synced."""
@@ -96,6 +99,8 @@ def bootstrap(conn: sqlite3.Connection, principal: Principal, now: int | None = 
         "calendar_events": calendars.upcoming_events(conn),
         # Who each live hold is for. Not on the log, so it comes beside it (FR-HLD-17).
         "hold_handles": holds.handles(conn),
+        # Where each booked delivery goes, beside the log for the same reason (FR-HLD-53).
+        "hold_drop_offs": holds.drop_offs(conn),
     }
 
 
@@ -174,10 +179,18 @@ def push(conn: sqlite3.Connection, principal: Principal, body: Any, now: int | N
             if principal.active:
                 holds.set_handle(conn, entry["hold_id"], entry.get("handle"), principal.user_id, now)
             taken.append(entry["hold_id"])
+    # Where a delivery booked in this batch goes, beside the events as a handle is (FR-HLD-53).
+    places_taken: list[str] = []
+    for entry in batch.hold_drop_offs:
+        if isinstance(entry, dict) and isinstance(entry.get("hold_id"), str):
+            if principal.active:
+                holds.take_drop_off(conn, entry["hold_id"], entry.get("place"), principal.user_id, now)
+            places_taken.append(entry["hold_id"])
     return {
         "accepted": accepted,
         "rejected": rejected,
         "hold_handles_taken": taken,
+        "hold_drop_offs_taken": places_taken,
         "log_id": log_id(conn),
         "server_time": now,
     }
@@ -324,6 +337,11 @@ def _check_entity_rules(conn: sqlite3.Connection, principal: Principal, incoming
                 raise Rejected("no such hold")
             if kind == "hold_ended" and payload.get("reason") == "expired":
                 raise Rejected("a hold expires by its date, not by a device (FR-HLD-11)")
+            if kind == "collection_booked" and not (
+                derived.get_entity(conn, "hold", str(incoming.get("entity_id"))) or {}
+            ).get("requested"):
+                # Staff book for the worker who asked (FR-HLD-61). A hold Staff placed has no worker to collect it.
+                raise Rejected("collection is booked only on a hold an Outreach worker asked for (FR-HLD-14)")
             answers = kind == "hold_approved" or (kind == "hold_ended" and payload.get("reason") == "declined")
             if answers and principal.role != "admin":
                 raise Rejected("only an Administrator approves or declines a request (FR-HLD-06)")
@@ -509,4 +527,6 @@ def pull(
         "calendar_events": calendars.upcoming_events(conn),
         # Whole, every time: a handle that is gone from here is deleted on the device (FR-HLD-17).
         "hold_handles": holds.handles(conn),
+        # Where each booked delivery goes, beside the log for the same reason (FR-HLD-53).
+        "hold_drop_offs": holds.drop_offs(conn),
     }

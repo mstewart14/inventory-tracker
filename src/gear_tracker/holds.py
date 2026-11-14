@@ -64,14 +64,60 @@ def set_handle(conn: sqlite3.Connection, hold_id: str, handle: Any, user_id: str
 
 
 def drop_handle(conn: sqlite3.Connection, hold_id: str) -> None:
+    """Forget who a hold was for, and where it was to be delivered (FR-HLD-17, FR-HLD-53)."""
     conn.execute("DELETE FROM hold_handles WHERE hold_id = ?", (hold_id,))
+    drop_drop_off(conn, hold_id)
+
+
+MAX_DROP_OFF = 120
+"""A drop-off point is a few words: a corner, a building's door, a front desk (FR-HLD-15)."""
+
+
+def tidy_drop_off(place: Any) -> str | None:
+    """A drop-off point as stored: one line, single spaces, at most MAX_DROP_OFF long."""
+    if not isinstance(place, str):
+        return None
+    tidy = " ".join(place.split())[:MAX_DROP_OFF].strip()
+    return tidy or None
+
+
+def drop_offs(conn: sqlite3.Connection) -> dict[str, str]:
+    """Every drop-off point held right now, by hold. Sent whole with each sync, as handles are."""
+    return {r["hold_id"]: r["place"] for r in conn.execute("SELECT hold_id, place FROM hold_drop_offs")}
+
+
+def set_drop_off(conn: sqlite3.Connection, hold_id: str, place: str, user_id: str, now: int) -> None:
+    conn.execute(
+        "INSERT INTO hold_drop_offs (hold_id, place, set_by, set_at) VALUES (?, ?, ?, ?)"
+        " ON CONFLICT (hold_id) DO UPDATE SET place = excluded.place, set_by = excluded.set_by,"
+        " set_at = excluded.set_at",
+        (hold_id, place, user_id, now),
+    )
+
+
+def take_drop_off(conn: sqlite3.Connection, hold_id: str, place: Any, user_id: str, now: int) -> bool:
+    """Keep a drop-off point a Staff device sent beside its booking (FR-HLD-61). Nothing is kept unless the
+    hold is in force and booked for delivery (FR-HLD-53)."""
+    tidy = tidy_drop_off(place)
+    hold = derived.get_entity(conn, "hold", hold_id)
+    if tidy is None or hold is None or hold.get("collection") != "delivery":
+        return False
+    if not views.is_live(hold, views.today(now)):
+        return False
+    set_drop_off(conn, hold_id, tidy, user_id, now)
+    return True
+
+
+def drop_drop_off(conn: sqlite3.Connection, hold_id: str) -> None:
+    conn.execute("DELETE FROM hold_drop_offs WHERE hold_id = ?", (hold_id,))
 
 
 def after(conn: sqlite3.Connection, event: events.Event) -> None:
     """What follows a hold's event once it is stored. A request tells every Administrator (FR-HLD-39),
     and its approval tells whoever asked (FR-HLD-40). An ending, by a device or by its date, tells the
     people named on the hold and then forgets who it was for (FR-HLD-12, FR-HLD-28, FR-HLD-17). A moved
-    expiry tells them too (FR-HLD-27)."""
+    expiry tells them too (FR-HLD-27), and so does a booked collection or a delivery someone has taken
+    (FR-HLD-54, FR-HLD-55)."""
     if event.entity_type != "hold":
         return
     if event.type == "created" and event.payload.get("requested"):
@@ -87,6 +133,18 @@ def after(conn: sqlite3.Connection, event: events.Event) -> None:
         if hold.get("ended_at") == event.effective_at and hold.get("ended_by") == event.actor_id:
             notify.hold_ended(conn, event.entity_id, str(event.payload.get("reason")), event.actor_id)
         drop_handle(conn, event.entity_id)
+    elif event.type == "collection_booked":
+        hold = derived.get_entity(conn, "hold", event.entity_id) or {}
+        if hold.get("collection") != "delivery":
+            # Booked in person, or not booked at all: there is nowhere to deliver to (FR-HLD-59).
+            drop_drop_off(conn, event.entity_id)
+        if hold.get("collection") == event.payload.get("method"):
+            notify.collection_booked(conn, event.entity_id, event.actor_id)
+    elif event.type == "delivery_taken":
+        hold = derived.get_entity(conn, "hold", event.entity_id) or {}
+        # Only a take that stood is news: there was a delivery, and this person now has it.
+        if hold.get("delivery_by") == event.actor_id:
+            notify.delivery_taken(conn, event.entity_id, event.actor_id)
     elif event.type == "field_changed" and event.payload.get("field") == "expires_on":
         notify.hold_moved(conn, event.entity_id, event.payload.get("old"), event.payload.get("value"), event.actor_id)
 
@@ -112,6 +170,11 @@ def expire_due(conn: sqlite3.Connection, now: int | None = None) -> list[str]:
         "DELETE FROM hold_handles WHERE hold_id NOT IN (SELECT entity_id FROM entities WHERE entity_type = 'hold'"
         " AND coalesce(json_extract(state, '$.state'), 'live') IN ('live', 'waiting')) AND set_at < ?",
         (now - 24 * 3_600_000,),
+    )
+    conn.execute(
+        "DELETE FROM hold_drop_offs WHERE hold_id NOT IN (SELECT entity_id FROM entities WHERE entity_type = 'hold'"
+        " AND coalesce(json_extract(state, '$.state'), 'live') = 'live'"
+        " AND json_extract(state, '$.collection') = 'delivery')"
     )
     return due
 

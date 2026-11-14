@@ -907,6 +907,12 @@ def create_app(
         outreach.move_expiry(conn, who, hold_id, body)
         return stamped({"holds": outreach.my_holds(conn, who)})
 
+    @app.post("/outreach/holds/{hold_id}/collection")
+    def book_collection(conn: Db, who: Anyone, hold_id: str, body: outreach.Booking) -> dict[str, Any]:
+        """Book how the worker's own approved hold is collected: in person, or delivered (FR-HLD-14)."""
+        outreach.book_collection(conn, who, hold_id, body)
+        return stamped({"holds": outreach.my_holds(conn, who)})
+
     @app.get("/outreach/photos/{photo_id}")
     def outreach_photo(conn: Db, who: Anyone, photo_id: str) -> FileResponse:
         """A photo of something Outreach is shown, and no other photo (FR-VIS-09)."""

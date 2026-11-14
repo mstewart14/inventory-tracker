@@ -83,6 +83,10 @@ export interface Meta {
   hold_handles?: Record<string, string>;
   /** Handles typed here that the server has not answered for yet. They go up with the next push. */
   pending_handles?: Record<string, string>;
+  /** Where each booked delivery is dropped off, as the server last sent it, whole (FR-HLD-53). Never part of the log. */
+  hold_drop_offs?: Record<string, string>;
+  /** Drop-off points typed here that the server has not answered for yet (FR-HLD-61). They go up with the next push. */
+  pending_drop_offs?: Record<string, string>;
 }
 
 export interface StockCheck {
@@ -242,6 +246,8 @@ export class Store {
       "calendar_events",
       "hold_handles",
       "pending_handles",
+      "hold_drop_offs",
+      "pending_drop_offs",
     ];
     for (const key of dropped) metaStore.delete(key);
     await done(tx);

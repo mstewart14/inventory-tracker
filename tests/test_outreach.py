@@ -162,6 +162,7 @@ OPEN_TO_OUTREACH = {
     ("GET", "/outreach/holds"),
     ("POST", "/outreach/holds"),
     ("POST", "/outreach/holds/{hold_id}/expiry"),
+    ("POST", "/outreach/holds/{hold_id}/collection"),
 }
 """Every route an Outreach account may call. Adding to this list is a decision, not a fix for a failing test."""
 
@@ -293,6 +294,10 @@ def test_a_request_sets_nothing_aside_until_it_is_approved(client, stock, db_pat
             "state": "waiting",
             "for": "Mouse",
             "requested_at": mine(client)[0]["requested_at"],
+            "collection": None,
+            "delivery_at": None,
+            "drop_off": None,
+            "delivery_by": None,
         }
     ]
     # Still all twenty to ask for, by anyone (FR-HLD-05).
@@ -451,3 +456,204 @@ def test_administrators_hear_of_a_request_and_the_worker_hears_the_answer(client
     client.post(f"/outreach/holds/{hold_id}/expiry", json={"expires_on": day(9)}, headers=AS_OMAR)
     assert sent[-1][0] == ["ada@example.org"] and sent[-1][1].endswith("hold date moved")
     assert all("Mouse" not in subject for _to, subject in sent)
+
+
+# --- collection and delivery (FR-HLD-14, 15, 24, 25) ------------------------------------------
+
+
+def approved(client, db_path, item_id: str, until: int = 5) -> str:
+    (hold_id,) = ask(client, item_id, until=until).json()["hold_ids"]
+    with as_admin(db_path):
+        assistant.approve_hold(hold_id)
+    return hold_id
+
+
+def book(client, hold_id: str, headers=AS_OMAR, **body):
+    return client.post(f"/outreach/holds/{hold_id}/collection", json=body, headers=headers)
+
+
+def at(offset: int, clock: str = "14:30") -> str:
+    return f"{day(offset)}T{clock}"
+
+
+def test_outreach_books_a_delivery_with_a_time_and_a_drop_off_point(client, stock, db_path, db):
+    hold_id = approved(client, db_path, stock["coat"])
+    got = book(client, hold_id, method="delivery", at=at(2), drop_off="  Front desk,   Main and Hastings ")
+    assert got.status_code == 200
+    (mine_now,) = got.json()["holds"]
+    assert mine_now["collection"] == "delivery" and mine_now["delivery_at"] == at(2)
+    assert mine_now["drop_off"] == "Front desk, Main and Hastings" and mine_now["delivery_by"] is None
+
+    # The time is on the log. Where it goes is beside it, and nowhere in it (FR-HLD-53).
+    hold = derived.get_entity(db, "hold", hold_id) or {}
+    assert hold["collection"] == "delivery" and hold["delivery_at"] == at(2)
+    assert holds.drop_offs(db) == {hold_id: "Front desk, Main and Hastings"}
+    logged = " ".join(row["payload"] for row in db.execute("SELECT payload FROM events"))
+    assert "Front desk" not in logged
+    # Staff devices are sent it with a sync.
+    assert sync.bootstrap(db, Principal(user_id=ALICE, device_id="phone", role="user"))["hold_drop_offs"] == {
+        hold_id: "Front desk, Main and Hastings"
+    }
+
+
+def test_collecting_in_person_has_no_time_or_place_and_replaces_a_delivery(client, stock, db_path, db):
+    hold_id = approved(client, db_path, stock["coat"])
+    assert book(client, hold_id, method="delivery", at=at(1), drop_off="Side door").status_code == 200
+    assistant.take_delivery(hold_id)
+    assert book(client, hold_id, method="in_person", at=at(1)).status_code == 400
+    got = book(client, hold_id, method="in_person")
+    assert got.status_code == 200
+    (mine_now,) = got.json()["holds"]
+    assert mine_now["collection"] == "in_person" and mine_now["delivery_at"] is None
+    assert mine_now["drop_off"] is None and mine_now["delivery_by"] is None
+    assert holds.drop_offs(db) == {}
+    assert "delivery_by" not in (derived.get_entity(db, "hold", hold_id) or {})
+
+
+def test_a_delivery_needs_a_time_within_the_hold_and_a_place(client, stock, db_path):
+    hold_id = approved(client, db_path, stock["coat"], until=5)
+    assert book(client, hold_id, method="delivery", at=at(2)).status_code == 400
+    assert book(client, hold_id, method="delivery", drop_off="Side door").status_code == 400
+    assert book(client, hold_id, method="delivery", at=at(-1), drop_off="Side door").status_code == 400
+    assert book(client, hold_id, method="delivery", at=at(6), drop_off="Side door").status_code == 409
+    assert book(client, hold_id, method="delivery", at=f"{day(2)}T25:00", drop_off="Side door").status_code == 400
+    assert book(client, hold_id, method="delivery", at=at(5), drop_off="Side door").status_code == 200
+    # The hold cannot then be cut short of its delivery.
+    got = client.post(f"/outreach/holds/{hold_id}/expiry", json={"expires_on": day(3)}, headers=AS_OMAR)
+    assert got.status_code == 409
+
+
+def test_only_an_approved_hold_of_ones_own_is_booked(client, stock, db_path):
+    (waiting,) = ask(client, stock["coat"]).json()["hold_ids"]
+    assert book(client, waiting, method="in_person").status_code == 409
+    theirs = assistant.place_hold(stock["socks"], "Bird", day(3), count=2)["hold_id"]
+    assert book(client, theirs, method="in_person").status_code == 404
+    assert book(client, waiting, method="in_person", headers=AS_ALICE).status_code == 403
+    with as_admin(db_path):
+        assistant.decline_hold(waiting)
+    assert book(client, waiting, method="in_person").status_code == 409
+
+
+def push_booking(client, hold_id: str, payload: dict, places: list[dict], seq: int = 1) -> dict:
+    event = {
+        "id": new_ulid(),
+        "entity_type": "hold",
+        "entity_id": hold_id,
+        "type": "collection_booked",
+        "actor_id": ALICE,
+        "device_id": "phone",
+        "device_seq": seq,
+        "occurred_at": now_ms(),
+        "clock_offset": 0,
+        "payload": payload,
+    }
+    body = {"device_id": "phone", "client_time": now_ms(), "events": [event], "hold_drop_offs": places}
+    return client.post("/sync/push", json=body, headers=AS_ALICE).json()
+
+
+def test_staff_book_for_the_worker_from_a_device_with_the_place_beside_the_log(client, stock, db_path, db):
+    hold_id = approved(client, db_path, stock["coat"])
+    place = {"hold_id": hold_id, "place": " Side   door "}
+    got = push_booking(client, hold_id, {"method": "delivery", "at": at(2)}, [place])
+    assert got["rejected"] == [] and got["hold_drop_offs_taken"] == [hold_id]
+    assert holds.drop_offs(db) == {hold_id: "Side door"}
+    (seen,) = mine(client)
+    assert seen["collection"] == "delivery" and seen["delivery_at"] == at(2) and seen["drop_off"] == "Side door"
+    assert "Side door" not in " ".join(row["payload"] for row in db.execute("SELECT payload FROM events"))
+
+    # Booked in person from the device: the place goes, and one sent with it is not kept.
+    got = push_booking(client, hold_id, {"method": "in_person"}, [place], seq=2)
+    assert got["rejected"] == [] and got["hold_drop_offs_taken"] == [hold_id]
+    assert holds.drop_offs(db) == {}
+
+
+def test_a_hold_staff_placed_is_not_booked_for_collection(client, stock, db):
+    theirs = assistant.place_hold(stock["socks"], "Bird", day(3), count=2)["hold_id"]
+    got = push_booking(client, theirs, {"method": "delivery", "at": at(1)}, [{"hold_id": theirs, "place": "Side door"}])
+    assert "only on a hold an Outreach worker asked for" in got["rejected"][0]["reason"]
+    assert holds.drop_offs(db) == {}
+    with pytest.raises(Exception, match="only on a hold an Outreach worker asked for"):
+        assistant.book_collection(theirs, "in_person")
+
+
+def test_the_assistant_books_for_the_worker(client, stock, db_path, db):
+    (waiting,) = ask(client, stock["socks"]).json()["hold_ids"]
+    with pytest.raises(Exception, match="not approved yet"):
+        assistant.book_collection(waiting, "in_person")
+    hold_id = approved(client, db_path, stock["coat"], until=5)
+    with pytest.raises(Exception, match="needs a time and a drop-off point"):
+        assistant.book_collection(hold_id, "delivery", at=at(2))
+    with pytest.raises(Exception, match="extend the hold first"):
+        assistant.book_collection(hold_id, "delivery", at=at(6), drop_off="Side door")
+    with pytest.raises(Exception, match="from today on"):
+        assistant.book_collection(hold_id, "delivery", at=at(-1), drop_off="Side door")
+    booked = assistant.book_collection(hold_id, "delivery", at=at(2), drop_off="Side door")
+    assert booked["collection"] == "delivery" and booked["drop_off"] == "Side door" and booked["delivery_by"] is None
+    assert [h for h in mine(client) if h["id"] == hold_id][0]["drop_off"] == "Side door"
+    assert assistant.book_collection(hold_id, "in_person")["collection"] == "in_person"
+    assert holds.drop_offs(db) == {}
+
+
+def test_the_log_refuses_a_drop_off_point(db, stock):
+    hold_id = new_ulid()
+    events.append_server(db, ALICE, "hold", hold_id, "created", {"item_id": stock["coat"], "expires_on": day(3)})
+    with pytest.raises(events.Rejected, match="not recorded on the log"):
+        events.append_server(
+            db, ALICE, "hold", hold_id, "collection_booked", {"method": "delivery", "at": at(1), "drop_off": "x"}
+        )
+
+
+def test_staff_take_a_delivery_and_are_named_on_it(client, stock, db_path, db):
+    hold_id = approved(client, db_path, stock["coat"])
+    with pytest.raises(Exception, match="no delivery is booked"):
+        assistant.take_delivery(hold_id)
+    book(client, hold_id, method="delivery", at=at(2), drop_off="Side door")
+    taken = assistant.take_delivery(hold_id)
+    assert taken["delivery_by"] == "Alice" and taken["drop_off"] == "Side door" and taken["delivery_at"] == at(2)
+    assert mine(client)[0]["delivery_by"] == "Alice"
+    assert ALICE in notify.named_on(derived.get_entity(db, "hold", hold_id) or {})
+    # An Administrator takes it over; a new time keeps whoever has it.
+    events.append_server(db, ADMIN, "user", ADMIN, "created", {"name": "Ada", "role": "admin", "active": True})
+    with as_admin(db_path):
+        assert assistant.take_delivery(hold_id)["delivery_by"] == "Ada"
+    book(client, hold_id, method="delivery", at=at(3), drop_off="Side door")
+    assert assistant.list_holds()["holds"][0]["delivery_by"] == "Ada"
+
+
+def test_the_drop_off_point_goes_when_the_hold_ends(client, stock, db_path, db):
+    hold_id = approved(client, db_path, stock["coat"])
+    book(client, hold_id, method="delivery", at=at(2), drop_off="Side door")
+    assistant.hand_out_hold(hold_id)
+    assert holds.drop_offs(db) == {} and holds.handles(db) == {}
+    (ended,) = mine(client)
+    assert ended["state"] == "handed_out" and ended["drop_off"] is None and ended["delivery_at"] is None
+
+    other = approved(client, db_path, stock["socks"], until=1)
+    book(client, other, method="delivery", at=at(1), drop_off="Back lane")
+    holds.expire_due(db, now_ms() + 3 * DAY_MS)
+    assert holds.drop_offs(db) == {}
+
+
+def test_a_booking_and_a_taken_delivery_are_mailed_without_the_place(client, stock, db_path, db, monkeypatch):
+    sent: list[tuple[list[str], str, str]] = []
+    monkeypatch.setattr(notify, "_send_to", lambda _s, to, _about, subject, body: sent.append((to, subject, body)))
+    monkeypatch.setattr(notify.mail, "get", lambda _conn: {"host": "smtp.example.org"})
+    for user, email in ((ADMIN, "ada@example.org"), (OMAR, "omar@example.org"), (ALICE, "alice@example.org")):
+        db.execute("INSERT INTO accounts (user_id, email, created_at) VALUES (?, ?, 0)", (user, email))
+    hold_id = approved(client, db_path, stock["coat"])
+
+    book(client, hold_id, method="delivery", at=at(2), drop_off="Side door")
+    assert sent[-1][0] == ["ada@example.org"] and sent[-1][1].endswith("delivery booked")
+    assert at(2).replace("T", " at ") in sent[-1][2]
+
+    assistant.take_delivery(hold_id)
+    assert sorted(sent[-1][0]) == ["ada@example.org", "omar@example.org"] and sent[-1][1].endswith("delivery taken")
+    assert "Alice will make the delivery" in sent[-1][2]
+
+    book(client, hold_id, method="in_person")
+    assert sent[-1][1].endswith("collection booked")
+
+    # Staff book for the worker: the worker hears, and so do the Administrators (FR-HLD-54).
+    assistant.book_collection(hold_id, "delivery", at=at(3), drop_off="Side door")
+    assert sorted(sent[-1][0]) == ["ada@example.org", "omar@example.org"] and sent[-1][1].endswith("delivery booked")
+    assert all("Side door" not in body and "Mouse" not in body for _to, _subject, body in sent)

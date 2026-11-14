@@ -403,6 +403,33 @@ class HoldApproval(Payload):
     """Nothing to say: who approved and when are the event's own actor and time (FR-HLD-06)."""
 
 
+LocalMinute = Annotated[str, StringConstraints(pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$")]
+"""A day and a time on the clock where the goods are, with no zone: 2026-11-20T14:30."""
+
+COLLECTIONS = ("in_person", "delivery")
+
+
+class Collection(Payload):
+    """How an approved hold's goods reach the client (FR-HLD-14): collected in person, or delivered at
+    a time (FR-HLD-15). Where a delivery goes is not here and must never be: it can say where a client
+    will be, and the log cannot forget it (FR-HLD-53)."""
+
+    method: Literal["in_person", "delivery"]
+    at: LocalMinute | None = None
+
+    @model_validator(mode="after")
+    def _time_for_a_delivery(self):
+        if (self.method == "delivery") != (self.at is not None):
+            raise ValueError("a delivery has a time, and collecting in person has none (FR-HLD-15)")
+        if {"drop_off", "place", "address", "handle"} & set(self.model_extra or {}):
+            raise ValueError("where a delivery goes is not recorded on the log (FR-HLD-53)")
+        return self
+
+
+class DeliveryTake(Payload):
+    """Nothing to say: who is delivering is the event's own actor (FR-HLD-25)."""
+
+
 class FoundReport(Payload):
     """A stranger's note, recorded by the server (FR-PUB-02). `item_id` is null for a code not yet on anything."""
 
@@ -624,6 +651,28 @@ class HoldApproved(_Incoming):
         return self
 
 
+class CollectionBooked(_Incoming):
+    type: Literal["collection_booked"]
+    payload: Collection
+
+    @model_validator(mode="after")
+    def _holds_only(self):
+        if self.entity_type != "hold":
+            raise ValueError("collection_booked applies only to holds")
+        return self
+
+
+class DeliveryTaken(_Incoming):
+    type: Literal["delivery_taken"]
+    payload: DeliveryTake
+
+    @model_validator(mode="after")
+    def _holds_only(self):
+        if self.entity_type != "hold":
+            raise ValueError("delivery_taken applies only to holds")
+        return self
+
+
 class HoldEnded(_Incoming):
     type: Literal["hold_ended"]
     payload: HoldEnd
@@ -752,6 +801,8 @@ IncomingEvent = Annotated[
     | HandedOut
     | HoldEnded
     | HoldApproved
+    | CollectionBooked
+    | DeliveryTaken
     | ReceivedEvent
     | Recounted
     | PoolMissingEvent
@@ -787,6 +838,8 @@ EVENT_TYPES = frozenset(
         "handed_out",
         "hold_ended",
         "hold_approved",
+        "collection_booked",
+        "delivery_taken",
         "received",
         "recounted",
         "pool_missing",

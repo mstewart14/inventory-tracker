@@ -139,6 +139,8 @@ export interface Bootstrap {
   calendar_events: CalendarEvent[];
   /** Who each live hold is for, whole (FR-HLD-17). Absent from a server that predates holds. */
   hold_handles?: Record<string, string>;
+  /** Where each booked delivery is dropped off, whole (FR-HLD-53). */
+  hold_drop_offs?: Record<string, string>;
 }
 export interface Pull {
   events: ServerEvent[];
@@ -146,12 +148,19 @@ export interface Pull {
   log_id: string;
   calendar_events: CalendarEvent[];
   hold_handles?: Record<string, string>;
+  hold_drop_offs?: Record<string, string>;
 }
 
 /** Who a hold is for, sent beside the events and never in them (FR-HLD-17). */
 export interface HoldHandle {
   hold_id: string;
   handle: string;
+}
+
+/** Where a delivery booked on this device goes, sent beside the events and never in them (FR-HLD-53). */
+export interface HoldDropOff {
+  hold_id: string;
+  place: string;
 }
 
 /** A calendar feed an Administrator added (FR-RES-20). `url_redacted` is host and path; the query
@@ -188,6 +197,8 @@ export interface PushResult {
   rejected: { id: string | null; reason: string }[];
   /** The holds whose handles the server has answered for, kept or not. */
   hold_handles_taken?: string[];
+  /** The holds whose drop-off points the server has answered for, kept or not. */
+  hold_drop_offs_taken?: string[];
   log_id: string;
 }
 export interface Session {
@@ -237,7 +248,17 @@ export interface OutreachHold {
   /** Who it is for. Gone once the hold has ended (FR-HLD-17). */
   for: string | null;
   requested_at: number | null;
+  /** How the worker booked it to be collected (FR-HLD-14). Null until booked, and once the hold has ended. */
+  collection: "in_person" | "delivery" | null;
+  /** When the delivery is wanted, on the local clock: 2026-11-20T14:30. */
+  delivery_at: string | null;
+  drop_off: string | null;
+  /** The Staff member bringing it, by name, once one has taken it (FR-HLD-25). */
+  delivery_by: string | null;
 }
+
+/** A delivery is a time and a drop-off point, and nothing else (FR-HLD-15). */
+export type CollectionBooking = { method: "in_person" } | { method: "delivery"; at: string; drop_off: string };
 
 export interface HoldRequest {
   item_id: string;
@@ -408,6 +429,7 @@ export function createApi(options: ApiOptions = {}) {
       events: OutgoingEvent[],
       round_trip_ms?: number,
       hold_handles: HoldHandle[] = [],
+      hold_drop_offs: HoldDropOff[] = [],
     ) =>
       request<PushResult>("POST", "/sync/push", {
         device_id,
@@ -415,6 +437,7 @@ export function createApi(options: ApiOptions = {}) {
         events,
         ...(round_trip_ms === undefined ? {} : { round_trip_ms }),
         ...(hold_handles.length > 0 ? { hold_handles } : {}),
+        ...(hold_drop_offs.length > 0 ? { hold_drop_offs } : {}),
       }),
     signIn: (email: string, password: string, device_id: string) =>
       request<Session>("POST", "/auth/sign-in", { email, password, device_id }),
@@ -509,6 +532,9 @@ export function createApi(options: ApiOptions = {}) {
     /** Move the end date of the worker's own request or hold (FR-HLD-21). */
     moveOutreachHold: (id: string, expires_on: string) =>
       request<{ holds: OutreachHold[] }>("POST", `/outreach/holds/${id}/expiry`, { expires_on }),
+    /** Book how the worker's own approved hold is collected: in person, or delivered (FR-HLD-14). */
+    bookCollection: (id: string, body: CollectionBooking) =>
+      request<{ holds: OutreachHold[] }>("POST", `/outreach/holds/${id}/collection`, body),
     /** A photo of something Outreach is shown; the server serves them no other (FR-VIS-09). */
     fetchOutreachPhoto: async (id: string): Promise<Blob> => (await raw("GET", `/outreach/photos/${id}`)).blob(),
     /** A PDF of fresh unassigned codes (FR-TAG-02). Administrators only; the sheet is built on the server. */

@@ -1,0 +1,96 @@
+{
+  "name": "booking in person after a delivery removes its time and whoever had taken it, and a later take does nothing",
+  "events": [
+    {
+      "id": "01000000000000000000000001",
+      "entity_type": "hold",
+      "entity_id": "h1",
+      "type": "created",
+      "actor_id": "omar",
+      "device_id": "server",
+      "device_seq": 1,
+      "effective_at": 1000,
+      "payload": {
+        "item_id": "coat-1",
+        "expires_on": "2026-12-01",
+        "requested": true
+      }
+    },
+    {
+      "id": "01000000000000000000000002",
+      "entity_type": "hold",
+      "entity_id": "h1",
+      "type": "hold_approved",
+      "actor_id": "ada",
+      "device_id": "a",
+      "device_seq": 2,
+      "effective_at": 2000,
+      "payload": {}
+    },
+    {
+      "id": "01000000000000000000000003",
+      "entity_type": "hold",
+      "entity_id": "h1",
+      "type": "collection_booked",
+      "actor_id": "omar",
+      "device_id": "server",
+      "device_seq": 3,
+      "effective_at": 3000,
+      "payload": {
+        "method": "delivery",
+        "at": "2026-11-20T14:30"
+      }
+    },
+    {
+      "id": "01000000000000000000000004",
+      "entity_type": "hold",
+      "entity_id": "h1",
+      "type": "delivery_taken",
+      "actor_id": "bea",
+      "device_id": "b",
+      "device_seq": 4,
+      "effective_at": 4000,
+      "payload": {}
+    },
+    {
+      "id": "01000000000000000000000005",
+      "entity_type": "hold",
+      "entity_id": "h1",
+      "type": "collection_booked",
+      "actor_id": "omar",
+      "device_id": "server",
+      "device_seq": 5,
+      "effective_at": 5000,
+      "payload": {
+        "method": "in_person"
+      }
+    },
+    {
+      "id": "01000000000000000000000006",
+      "entity_type": "hold",
+      "entity_id": "h1",
+      "type": "delivery_taken",
+      "actor_id": "cal",
+      "device_id": "c",
+      "device_seq": 6,
+      "effective_at": 6000,
+      "payload": {}
+    }
+  ],
+  "state": {
+    "hold": {
+      "h1": {
+        "item_id": "coat-1",
+        "expires_on": "2026-12-01",
+        "requested": true,
+        "added_at": 1000,
+        "modified_at": 1000,
+        "created_by": "omar",
+        "state": "live",
+        "approved_by": "ada",
+        "approved_at": 2000,
+        "collection": "in_person"
+      }
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { IDBFactory } from "fake-indexeddb";
 import { beforeEach, expect, test, vi } from "vitest";
@@ -51,6 +51,10 @@ const waiting = {
   state: "waiting",
   for: "Mouse",
   requested_at: T0,
+  collection: null,
+  delivery_at: null,
+  drop_off: null,
+  delivery_by: null,
 };
 
 interface Fake {
@@ -80,6 +84,17 @@ function fake(items = listing.items): Fake {
           expires_on: string;
         };
         state.holds = [{ ...waiting, expires_on }];
+        return answer({ holds: state.holds });
+      }
+      const booked = /^\/outreach\/holds\/(\w+)\/collection$/.exec(path);
+      if (booked) {
+        const body = JSON.parse(String(init?.body)) as { method: string; at?: string; drop_off?: string };
+        if (body.drop_off === "nowhere") return answer({ error: "conflict", message: "the server said no" }, 409);
+        state.holds = (state.holds as { id: string }[]).map((h) =>
+          h.id === booked[1]
+            ? { ...h, collection: body.method, delivery_at: body.at ?? null, drop_off: body.drop_off ?? null }
+            : h,
+        );
         return answer({ holds: state.holds });
       }
       if (path === "/outreach/holds") return answer({ holds: state.holds });
@@ -224,6 +239,7 @@ test("each request says how it stands, and an open one can have its day moved (F
   expect(mine.getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual([
     "Change the date for Socks",
     "Change the date for Winter coat",
+    "Book collection of Winter coat",
   ]);
 
   await user.click(mine.getByRole("button", { name: "Change the date for Socks" }));
@@ -233,6 +249,79 @@ test("each request says how it stands, and an open one can have its day moved (F
   await user.click(mine.getByRole("button", { name: "Save date" }));
   expect(await screen.findByRole("status")).toHaveTextContent("Socks is now until 2025-09-12.");
   expect(server.sent).toEqual([{ expires_on: "2025-09-12" }]);
+});
+
+const approvedCoat = { ...waiting, id: "h2", item: "Winter coat", count: 1, state: "approved", for: "JD" };
+
+test("an approved hold is booked for delivery: a time and a drop-off point (FR-HLD-14, FR-HLD-15)", async () => {
+  const server = fake();
+  server.holds = [waiting, approvedCoat];
+  mount(server.fetch);
+  const mine = within(await screen.findByRole("region", { name: "Your requests" }));
+  expect(mine.getByText("Collection is not booked yet.")).toBeInTheDocument();
+  // A request not yet approved has nothing to collect.
+  expect(mine.queryByRole("button", { name: "Book collection of Socks" })).toBeNull();
+
+  await user.click(mine.getByRole("button", { name: "Book collection of Winter coat" }));
+  await user.click(mine.getByLabelText("Delivered by our staff"));
+  const save = mine.getByRole("button", { name: "Save" });
+  // Nothing to save until it has a time within the hold and a place.
+  expect(save).toBeDisabled();
+  fireEvent.change(mine.getByLabelText("Deliver at"), { target: { value: "2025-09-09T10:00" } });
+  await user.type(mine.getByLabelText("Drop-off point"), "Side door");
+  expect(save).toBeDisabled();
+  fireEvent.change(mine.getByLabelText("Deliver at"), { target: { value: "2025-09-05T14:30" } });
+  await user.click(save);
+
+  expect(await screen.findByRole("status")).toHaveTextContent(
+    "Delivery of Winter coat booked for 2025-09-05 at 14:30.",
+  );
+  expect(server.sent).toEqual([{ method: "delivery", at: "2025-09-05T14:30", drop_off: "Side door" }]);
+  expect(
+    mine.getByText("Delivery 2025-09-05 at 14:30 · to Side door. No one has taken the delivery yet."),
+  ).toBeInTheDocument();
+  expect(mine.getByRole("button", { name: "Change collection of Winter coat" })).toBeInTheDocument();
+});
+
+test("a booked delivery says who is bringing it, and can be changed to in person (FR-HLD-25)", async () => {
+  const server = fake();
+  server.holds = [
+    {
+      ...approvedCoat,
+      collection: "delivery",
+      delivery_at: "2025-09-05T14:30",
+      drop_off: "Side door",
+      delivery_by: "Alice",
+    },
+  ];
+  mount(server.fetch);
+  const mine = within(await screen.findByRole("region", { name: "Your requests" }));
+  expect(mine.getByText("Delivery 2025-09-05 at 14:30 · to Side door. Alice will bring it.")).toBeInTheDocument();
+
+  await user.click(mine.getByRole("button", { name: "Change collection of Winter coat" }));
+  // The form opens on what was booked.
+  expect(mine.getByLabelText("Deliver at")).toHaveValue("2025-09-05T14:30");
+  expect(mine.getByLabelText("Drop-off point")).toHaveValue("Side door");
+  await user.click(mine.getByLabelText("In person"));
+  expect(mine.queryByLabelText("Drop-off point")).toBeNull();
+  await user.click(mine.getByRole("button", { name: "Save" }));
+  expect(await screen.findByRole("status")).toHaveTextContent("Winter coat will be collected in person.");
+  expect(server.sent).toEqual([{ method: "in_person" }]);
+  expect(mine.getByText("To be collected in person.")).toBeInTheDocument();
+});
+
+test("a booking the server refuses is shown, and the form stays", async () => {
+  const server = fake();
+  server.holds = [approvedCoat];
+  mount(server.fetch);
+  const mine = within(await screen.findByRole("region", { name: "Your requests" }));
+  await user.click(mine.getByRole("button", { name: "Book collection of Winter coat" }));
+  await user.click(mine.getByLabelText("Delivered by our staff"));
+  fireEvent.change(mine.getByLabelText("Deliver at"), { target: { value: "2025-09-05T14:30" } });
+  await user.type(mine.getByLabelText("Drop-off point"), "nowhere");
+  await user.click(mine.getByRole("button", { name: "Save" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("the server said no");
+  expect(mine.getByLabelText("Drop-off point")).toHaveValue("nowhere");
 });
 
 // --- in the app --------------------------------------------------------------------------

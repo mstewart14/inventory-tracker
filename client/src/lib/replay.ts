@@ -115,6 +115,12 @@ export type State = Record<string, Record<string, Fields>>;
 // "waiting" and it sets nothing aside. `hold_approved {}` makes a waiting hold "live", with
 // `approved_by` and `approved_at`; on any other hold it does nothing, so the first of an approval
 // and a decline in replay order stands. `hold_ended {reason: "declined"}` ends a waiting one, and does nothing to a live one.
+//
+// `collection_booked {method, at?}` says how a live hold's goods reach the client (FR-HLD-14):
+// `collection` is "in_person" or "delivery", and a delivery has `delivery_at`, a local day and time.
+// The last booking stands. Booking in person removes `delivery_at` and `delivery_by`.
+// `delivery_taken {}` sets `delivery_by` to its actor on a live hold booked for delivery, and does
+// nothing otherwise (FR-HLD-25). Where a delivery goes is never on the log (FR-HLD-53).
 
 export interface ReplayEvent {
   id: string;
@@ -316,6 +322,8 @@ export const KNOWN_EVENT_TYPES: ReadonlySet<string> = new Set([
   "handed_out",
   "hold_ended",
   "hold_approved",
+  "collection_booked",
+  "delivery_taken",
   "received",
   "recounted",
   "pool_missing",
@@ -389,6 +397,24 @@ export function apply(entity: Fields, event: ReplayEvent): void {
         entity.state = "live";
         entity.approved_by = event.actor_id;
         entity.approved_at = event.effective_at;
+      }
+      break;
+    case "collection_booked":
+      // Only a hold in force is collected (FR-HLD-14). The last booking stands.
+      if ((entity.state ?? "live") === "live") {
+        entity.collection = p.method;
+        if (p.method === "delivery") {
+          entity.delivery_at = p.at;
+        } else {
+          delete entity.delivery_at;
+          delete entity.delivery_by;
+        }
+      }
+      break;
+    case "delivery_taken":
+      // Whoever took it last is making it (FR-HLD-25). Nothing to take unless a delivery is booked.
+      if ((entity.state ?? "live") === "live" && entity.collection === "delivery") {
+        entity.delivery_by = event.actor_id;
       }
       break;
     case "hold_ended":

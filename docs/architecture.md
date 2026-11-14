@@ -690,6 +690,28 @@ The worker reads their own holds from `GET /outreach/holds`, never anyone else's
 `POST /outreach/holds/{id}/expiry` (FR-HLD-21). `notify.py` mails every Administrator when a request arrives or when
 Outreach moves a date, and mails the worker the answer.
 
+### Collection and delivery
+
+Once a request is approved, the worker says how the goods will reach the client (FR-HLD-14):
+`POST /outreach/holds/{id}/collection`, written by the server as `collection_booked {method, at?}`. `method` is
+`in_person` or `delivery`. A delivery has `at`, a day and time on the local clock with no zone, on or before the hold's
+last day. The last booking stands, and booking in person removes a delivery.
+
+Staff can book for the worker (FR-HLD-61), and that is an ordinary `collection_booked` from their device, so it works
+offline. `sync.py` refuses one on a hold that was not `requested`: a hold Staff placed has no worker to collect it.
+
+The drop-off point is not on the log (FR-HLD-53). A few words like "side door on Main" can say where a client will be,
+and the log is kept for good. It is a row in `hold_drop_offs`, handled as a handle is: sent whole with every sync as
+`hold_drop_offs`, deleted when the hold ends, and left out of every mail. One typed on a Staff device waits in
+`pending_drop_offs` and goes up with the next push as `hold_drop_offs`, as a pending handle does. `Collection` refuses a
+payload that carries one.
+
+Deliveries are made by Staff (FR-HLD-24). `delivery_taken {}` is an ordinary event from a Staff or Administrator device,
+so it works offline; it sets `delivery_by` to its actor on a live hold booked for delivery, and the last one stands,
+which is how a delivery is taken over. Whoever has it is named on the hold (`notify.named_on`), so they hear when it
+expires, moves or is put back. Delivering is not an event of its own: the goods are handed out from the hold as always,
+and the hold ends.
+
 ## Repairs
 
 A ticket is a `repair` entity: `created` with the item it is against and a description (FR-REP-01), by anyone signed in

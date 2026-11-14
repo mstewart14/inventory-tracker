@@ -11,6 +11,7 @@
  * on a phone with no signal (FR-HLD-11). The server records the ending when it sees the day pass.
  */
 import { isPool, item, type Item, poolCounts, resolveItem } from "./inventory";
+import type { CollectionBooking } from "./api";
 import type { Fields, State } from "./replay";
 import type { Store } from "./store";
 import { localDate } from "./time";
@@ -32,12 +33,21 @@ export interface Hold {
   /** The Administrator who approved a request, and when (FR-HLD-06). */
   approved_by?: string;
   approved_at?: number;
+  /** How an Outreach worker booked it to be collected (FR-HLD-14). Unset until they do. */
+  collection?: "in_person" | "delivery";
+  /** When a delivery is wanted, on the local clock: 2026-11-20T14:30 (FR-HLD-15). */
+  delivery_at?: string;
+  /** The Staff member making the delivery, once one has taken it (FR-HLD-25). */
+  delivery_by?: string;
   ended_at?: number;
   ended_by?: string;
   added_at?: number;
 }
 
 export const MAX_HANDLE = 80;
+
+/** A drop-off point is a few words. Twin of MAX_DROP_OFF in holds.py. */
+export const MAX_DROP_OFF = 120;
 
 /** A handle as stored: one line, single spaces, at most MAX_HANDLE long. Twin of tidy_handle in holds.py. */
 export const tidyHandle = (handle: string): string =>
@@ -93,6 +103,23 @@ export const today = (store: Store): string => localDate(store.now());
 /** Who a live hold is for, if this device knows: typed here and not yet sent, or as the server last said. */
 export const handleFor = (store: Store, holdId: string): string | undefined =>
   store.meta.pending_handles?.[holdId] ?? store.meta.hold_handles?.[holdId];
+
+/** Where a booked delivery is dropped off, if the server has sent it (FR-HLD-15). Kept beside the log (FR-HLD-53). */
+export const dropOffFor = (store: Store, holdId: string): string | undefined =>
+  store.meta.pending_drop_offs?.[holdId] ?? store.meta.hold_drop_offs?.[holdId];
+
+/** A drop-off point as stored: one line, single spaces, at most MAX_DROP_OFF long. Twin of tidy_drop_off in holds.py. */
+export const tidyDropOff = (place: string): string =>
+  place.split(/\s+/).filter(Boolean).join(" ").slice(0, MAX_DROP_OFF).trim();
+
+/** "2026-11-20T14:30" as people read it: "2026-11-20 at 14:30". */
+export const deliveryTime = (at: string | undefined): string => (at ?? "").replace("T", " at ");
+
+/** Live holds booked for delivery, soonest first (FR-HLD-24). */
+export const deliveries = (state: State, today: string): Hold[] =>
+  holds(state)
+    .filter((h) => isLive(h, today) && h.collection === "delivery")
+    .sort((a, b) => (a.delivery_at ?? "").localeCompare(b.delivery_at ?? "") || a.id.localeCompare(b.id));
 
 const actor = (store: Store): string => {
   const id = store.meta.user?.id;
@@ -169,16 +196,20 @@ export async function extendHold(store: Store, id: string, expiresOn: string): P
   });
 }
 
-/** The handle is not kept past the hold (FR-HLD-17): gone from this device now, from the server at sync. */
+/** The handle and the drop-off point are not kept past the hold (FR-HLD-17, FR-HLD-53): gone from this device now, from the server at sync. */
+const without = (map: Record<string, string> | undefined, id: string) => {
+  if (!map || !(id in map)) return map;
+  const { [id]: _gone, ...rest } = map;
+  return Object.keys(rest).length > 0 ? rest : undefined;
+};
+
 async function forget(store: Store, id: string): Promise<void> {
-  const drop = (map: Record<string, string> | undefined) => {
-    if (!map || !(id in map)) return map;
-    const { [id]: _gone, ...rest } = map;
-    return Object.keys(rest).length > 0 ? rest : undefined;
-  };
+  const drop = (map: Record<string, string> | undefined) => without(map, id);
   await store.setMeta({
     pending_handles: drop(store.meta.pending_handles),
     hold_handles: drop(store.meta.hold_handles),
+    hold_drop_offs: drop(store.meta.hold_drop_offs),
+    pending_drop_offs: drop(store.meta.pending_drop_offs),
   });
 }
 
@@ -251,4 +282,53 @@ export async function approveHold(store: Store, id: string): Promise<void> {
 export async function declineHold(store: Store, id: string): Promise<void> {
   waitingHold(store, id);
   await end(store, id, "declined");
+}
+
+/**
+ * Take on a delivery an Outreach worker booked (FR-HLD-24, FR-HLD-25): this person is now making it,
+ * and is named on the hold. Taking one someone else has takes it over.
+ */
+export async function takeDelivery(store: Store, id: string): Promise<void> {
+  const h = liveHold(store, id);
+  if (h.collection !== "delivery") throw new Error("no delivery is booked for this hold");
+  if (h.delivery_by === actor(store)) return;
+  await store.record({
+    entity_type: "hold",
+    entity_id: id,
+    type: "delivery_taken",
+    actor_id: actor(store),
+    payload: {},
+  });
+}
+
+/**
+ * Book or change how a hold an Outreach worker asked for is collected, for them (FR-HLD-61): in
+ * person, or delivered at a time to a drop-off point (FR-HLD-15). The time goes on the log. The
+ * drop-off point is saved beside it before the booking is recorded, as a handle is, so a sync that
+ * runs at once takes both (FR-HLD-53).
+ */
+export async function bookCollection(store: Store, id: string, booking: CollectionBooking): Promise<void> {
+  const h = liveHold(store, id);
+  if (!h.requested) throw new Error("collection is booked only on a hold an Outreach worker asked for");
+  if (booking.method === "delivery") {
+    const place = tidyDropOff(booking.drop_off);
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(booking.at)) throw new Error("pick a day and a time");
+    const day = booking.at.slice(0, 10);
+    if (day < today(store)) throw new Error("pick a day from today on");
+    if (day > h.expires_on) throw new Error("the delivery is after the hold runs out; change the hold's date first");
+    if (!place) throw new Error("say where it is dropped off");
+    await store.setMeta({ pending_drop_offs: { ...store.meta.pending_drop_offs, [id]: place } });
+  } else {
+    await store.setMeta({
+      pending_drop_offs: without(store.meta.pending_drop_offs, id),
+      hold_drop_offs: without(store.meta.hold_drop_offs, id),
+    });
+  }
+  await store.record({
+    entity_type: "hold",
+    entity_id: id,
+    type: "collection_booked",
+    actor_id: actor(store),
+    payload: booking.method === "delivery" ? { method: "delivery", at: booking.at } : { method: "in_person" },
+  });
 }

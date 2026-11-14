@@ -9,8 +9,9 @@ import {
   type OutreachItems,
 } from "../lib/api";
 import { DAY_MS } from "../lib/clock";
-import { MAX_HANDLE } from "../lib/holds";
+import { deliveryTime, MAX_HANDLE } from "../lib/holds";
 import { localDate } from "../lib/time";
+import { CollectionForm } from "./CollectionForm";
 import { Contact } from "./Contact";
 import { Page } from "./Page";
 import { PrivacyLink } from "./PrivacyLink";
@@ -294,6 +295,7 @@ function MyHolds({
   onError: (e: unknown) => void;
 }) {
   const [moving, setMoving] = useState<string | null>(null);
+  const [booking, setBooking] = useState<string | null>(null);
   const [until, setUntil] = useState("");
   const [busy, setBusy] = useState(false);
   const today = localDate(now());
@@ -331,8 +333,39 @@ function MyHolds({
                   {STATES[h.state]}
                   {h.for ? ` · for ${h.for}` : ""} · {open ? "until" : "was until"} {h.expires_on}
                 </span>
+                {h.state === "approved" && (
+                  <>
+                    <br />
+                    <span className="small">{collectionLine(h)}</span>
+                  </>
+                )}
               </p>
+              {booking === h.id && (
+                <CollectionForm
+                  id={h.id}
+                  today={today}
+                  expiresOn={h.expires_on}
+                  booked={h}
+                  deliveredBy="Delivered by our staff"
+                  onCancel={() => setBooking(null)}
+                  onSave={async (body) => {
+                    try {
+                      await api.bookCollection(h.id, body);
+                    } catch (e) {
+                      onError(e);
+                      return;
+                    }
+                    setBooking(null);
+                    await onMoved(
+                      body.method === "delivery"
+                        ? `Delivery of ${h.item} booked for ${deliveryTime(body.at)}.`
+                        : `${h.item} will be collected in person.`,
+                    );
+                  }}
+                />
+              )}
               {open &&
+                booking !== h.id &&
                 (moving === h.id ? (
                   <form
                     className="row"
@@ -365,6 +398,16 @@ function MyHolds({
                     >
                       Change date
                     </button>
+                    {h.state === "approved" && (
+                      <button
+                        type="button"
+                        className="minor"
+                        aria-label={`${h.collection ? "Change" : "Book"} collection of ${h.item}`}
+                        onClick={() => setBooking(h.id)}
+                      >
+                        {h.collection ? "Change collection" : "Book collection…"}
+                      </button>
+                    )}
                   </div>
                 ))}
             </li>
@@ -373,6 +416,16 @@ function MyHolds({
       </ul>
     </section>
   );
+}
+
+/** How an approved hold will reach the client, as the worker booked it (FR-HLD-14). */
+function collectionLine(h: OutreachHold): string {
+  if (h.collection === "in_person") return "To be collected in person.";
+  if (h.collection === "delivery") {
+    const who = h.delivery_by ? `${h.delivery_by} will bring it.` : "No one has taken the delivery yet.";
+    return `Delivery ${deliveryTime(h.delivery_at ?? undefined)} · to ${h.drop_off ?? "the drop-off point"}. ${who}`;
+  }
+  return "Collection is not booked yet.";
 }
 
 /** An <img> cannot send the bearer header, so the bytes are fetched and shown from memory. One that fails is left out. */

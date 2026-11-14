@@ -268,3 +268,133 @@ test("an unanswered request past its day reads as expired", async () => {
   expect(h.holdState(h.hold(store.state, id)!, h.today(store))).toBe("expired");
   expect(h.waitingHolds(store.state, h.today(store))).toEqual([]);
 });
+
+// --- deliveries (FR-HLD-14, 15, 24, 25) ------------------------------------------------------
+
+/** An event on a hold as it reaches a Staff device from the server or from another device. */
+async function arrives(id: string, type: string, actor: string, payload: Record<string, unknown>, seq: number) {
+  const at = store.now();
+  await store.receive(
+    [
+      {
+        id: `03000000000000000000${String(seq).padStart(6, "0")}`,
+        entity_type: "hold",
+        entity_id: id,
+        type,
+        actor_id: actor,
+        device_id: "server",
+        device_seq: seq,
+        occurred_at: at,
+        clock_offset: 0,
+        effective_at: at,
+        received_at: at,
+        seq,
+        payload,
+      },
+    ],
+    seq,
+  );
+}
+
+/** A request, approved, and booked for delivery by the worker who asked. */
+async function delivery(itemId: string, count: number | undefined): Promise<string> {
+  const id = await request(itemId, count, 2000);
+  await arrives(id, "hold_approved", "alice", {}, 2001);
+  await arrives(id, "collection_booked", "omar", { method: "delivery", at: `${day(2)}T14:30` }, 2002);
+  await store.setMeta({ hold_drop_offs: { [id]: "Side door" } });
+  return id;
+}
+
+const booked = () => within(screen.getByRole("region", { name: "Deliveries" }));
+
+test("a booked delivery is listed with its time and drop-off point, and a Staff member takes it (FR-HLD-24, FR-HLD-25)", async () => {
+  await seedUsers(store, [
+    { ...alice, role: "user" },
+    { id: "omar", name: "Omar", role: "outreach", active: true },
+  ]);
+  const id = await delivery(socks, 4);
+  renderInShell(<Holds store={store} />);
+  expect(booked().getByText("4 × Socks")).toBeInTheDocument();
+  expect(booked().getByText(`${day(2)} at 14:30 · to Side door · for Mouse · booked by Omar`)).toBeInTheDocument();
+
+  await user.click(booked().getByRole("button", { name: "Take the delivery of Socks" }));
+  await waitFor(() => expect(h.hold(store.state, id)?.delivery_by).toBe("alice"));
+  expect(booked().getByRole("note")).toHaveTextContent("You are delivering this.");
+  expect(booked().queryByRole("button", { name: /delivery of Socks/ })).toBeNull();
+});
+
+test("a delivery someone else has can be taken over (FR-HLD-25)", async () => {
+  await seedUsers(store, [alice, { id: "bea", name: "Bea", role: "user", active: true }]);
+  const id = await delivery(coat, undefined);
+  await arrives(id, "delivery_taken", "bea", {}, 2003);
+  renderInShell(<Holds store={store} />);
+  expect(booked().getByText("Bea is delivering this.")).toBeInTheDocument();
+  await user.click(booked().getByRole("button", { name: "Take over the delivery of Winter coat" }));
+  await waitFor(() => expect(h.hold(store.state, id)?.delivery_by).toBe("alice"));
+});
+
+test("the item's page says how its hold is collected, and the drop-off point goes with the hold (FR-HLD-53)", async () => {
+  await seedUsers(store, [alice, { id: "bea", name: "Bea", role: "user", active: true }]);
+  const id = await delivery(coat, undefined);
+  navigate(`/items/${coat}`);
+  renderInShell(<ItemPage store={store} id={coat} />);
+  expect(panel().getByRole("note")).toHaveTextContent(
+    `Delivery ${day(2)} at 14:30 · to Side door · nobody has taken it`,
+  );
+  await user.click(panel().getByRole("button", { name: "Hand out to Mouse" }));
+  await waitFor(() => expect(h.hold(store.state, id)?.state).toBe("handed_out"));
+  await waitFor(() => expect(h.dropOffFor(store, id)).toBeUndefined());
+});
+
+test("a hold collected in person is no delivery, and says so in the list", async () => {
+  const id = await request(coat, undefined, 2000);
+  await arrives(id, "hold_approved", "alice", {}, 2001);
+  await arrives(id, "collection_booked", "omar", { method: "in_person" }, 2002);
+  renderInShell(<Holds store={store} />);
+  expect(screen.queryByRole("region", { name: "Deliveries" })).toBeNull();
+  expect(screen.getByText(/collected in person/)).toBeInTheDocument();
+  await expect(h.takeDelivery(store, id)).rejects.toThrow("no delivery is booked");
+});
+
+test("Staff book a delivery for the worker from the item's page, and change it to in person (FR-HLD-61)", async () => {
+  await seedUsers(store, [
+    { ...alice, role: "user" },
+    { id: "omar", name: "Omar", role: "outreach", active: true },
+  ]);
+  const id = await request(coat, undefined, 2000);
+  await arrives(id, "hold_approved", "ada", {}, 2001);
+  navigate(`/items/${coat}`);
+  renderInShell(<ItemPage store={store} id={coat} />);
+
+  await user.click(panel().getByRole("button", { name: "Book collection…" }));
+  await user.click(panel().getByLabelText("Delivered by Staff"));
+  fireEvent.change(panel().getByLabelText("Deliver at"), { target: { value: `${day(6)}T10:00` } });
+  await user.type(panel().getByLabelText("Drop-off point"), "  Side   door ");
+  // Past the hold's last day, five days off.
+  expect(panel().getByRole("button", { name: "Save" })).toBeDisabled();
+  fireEvent.change(panel().getByLabelText("Deliver at"), { target: { value: `${day(2)}T10:00` } });
+  await user.click(panel().getByRole("button", { name: "Save" }));
+
+  await waitFor(() => expect(h.hold(store.state, id)?.collection).toBe("delivery"));
+  expect(h.hold(store.state, id)?.delivery_at).toBe(`${day(2)}T10:00`);
+  // Beside the log, waiting for the next sync, and in no event.
+  expect(store.meta.pending_drop_offs).toEqual({ [id]: "Side door" });
+  expect(JSON.stringify(store.pending)).not.toContain("Side door");
+  expect(panel().getByRole("note")).toHaveTextContent(`Delivery ${day(2)} at 10:00 · to Side door`);
+
+  await user.click(panel().getByRole("button", { name: "Change collection" }));
+  expect(panel().getByLabelText("Drop-off point")).toHaveValue("Side door");
+  await user.click(panel().getByLabelText("In person"));
+  await user.click(panel().getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(h.hold(store.state, id)?.collection).toBe("in_person"));
+  expect(h.hold(store.state, id)?.delivery_at).toBeUndefined();
+  expect(h.dropOffFor(store, id)).toBeUndefined();
+});
+
+test("a hold Staff placed has no collection to book (FR-HLD-14)", async () => {
+  const id = await h.placeHold(store, { item_id: coat, handle: "Bird", expires_on: day(3) });
+  navigate(`/items/${coat}`);
+  renderInShell(<ItemPage store={store} id={coat} />);
+  expect(panel().queryByRole("button", { name: "Book collection…" })).toBeNull();
+  await expect(h.bookCollection(store, id, { method: "in_person" })).rejects.toThrow("an Outreach worker asked for");
+});

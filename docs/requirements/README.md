@@ -16,9 +16,10 @@ The functional requirements, non-functional requirements and stories still descr
 written for the society. Handing out and intake are built. Holds are built. The public catalogue is built (FR-VIS-04 to
 07, 15 to 23). The three roles are built (FR-USR-36 to 46): an Outreach account signs in and sees the items marked for
 it, with places and counts (FR-VIS-02, 03, 09 to 12, 24 to 26). It asks for a hold there, an Administrator approves or
-declines it on the Holds screen, and the worker can move its date (FR-HLD-05 to 07, 21, 22, 39 to 50). Booking
-collection and delivery are not built (FR-HLD-14, 15, 24, 25). Until a section is rewritten, read it as what the code
-does today, not what the society needs.
+declines it on the Holds screen, and the worker can move its date (FR-HLD-05 to 07, 21, 22, 39 to 50). Once it is
+approved the worker books collection, in person or by delivery, or Staff book it for them, and a Staff member takes the
+delivery (FR-HLD-14, 15, 24, 25, 51 to 63). Until a section is rewritten, read it as what the code does today, not what
+the society needs.
 
 ## Documents
 
@@ -74,13 +75,17 @@ it, and needs a connection. Moving someone into or out of Outreach signs them ou
 **A join link never makes an Administrator.** It makes Staff or Outreach accounts. An Administrator is invited by name
 or promoted.
 
+**Staff can book collection for an Outreach worker.** The worker books it themselves, or phones and Staff do it for
+them. Either can change it.
+
 **Only an Administrator approves an Outreach request,** for now.
 
 **Staff are trusted.** A hold placed by Staff needs no approval.
 
 **The system never contacts a client.** It has no way to. Staff or the Outreach worker pass news on.
 
-**A delivery is a time and a drop-off point.** No address book, no recipient details. Staff make deliveries.
+**A delivery is a time and a drop-off point.** No address book, no recipient details. Staff make deliveries. The
+drop-off point is kept like a handle: off the permanent log, out of every mail, and deleted when the hold ends.
 
 **Anyone on a hold can move its end date.** Staff and Administrators can move any hold's. An Outreach worker can move
 their own with no new approval; Administrators are told.
@@ -118,6 +123,8 @@ deliveries is wanted later.
 - Should one request cover several things tracked one by one? For now each thing is its own request (FR-HLD-45).
 - Can Outreach withdraw a request they no longer need? Not yet; it runs out on its day.
 - Is a delivery taken by one named Staff member (FR-HLD-25)? Assumed, so that there is someone to tell.
+- Should a Staff member be able to give a delivery back, so nobody has it? Not yet; another takes it over.
+- Should every Staff member be mailed when a delivery is booked? For now Administrators are, and Staff see the list.
 - May a source name a person who donated? It is written to the permanent log, so it could not be erased later.
 - How many people hold each role?
 - Where are goods stored, and how is that space divided?

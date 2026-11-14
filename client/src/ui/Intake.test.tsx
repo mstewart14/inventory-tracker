@@ -52,7 +52,8 @@ test("the item form sets the source, suggesting ones already used, and who may s
   await waitFor(() =>
     expect(inv.item(store.state, coat)).toMatchObject({ source: "Outdoor store", visibility: "public" }),
   );
-  expect(fact("Visible to")).toBe("Public");
+  // The form closes a moment after the store has the change.
+  await waitFor(() => expect(fact("Visible to")).toBe("Public"));
   expect(fact("Source")).toBe("Outdoor store");
 
   // Back to staff only is stored as nothing, not as a fourth value.

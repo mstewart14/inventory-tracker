@@ -3,7 +3,11 @@ import { DAY_MS } from "../lib/clock";
 import {
   approveHold,
   available,
+  bookCollection,
   declineHold,
+  deliveries,
+  deliveryTime,
+  dropOffFor,
   extendHold,
   freeFor,
   handleFor,
@@ -17,6 +21,7 @@ import {
   MAX_HANDLE,
   placeHold,
   putBackHold,
+  takeDelivery,
   today,
   waitingHolds,
 } from "../lib/holds";
@@ -25,6 +30,7 @@ import { navigate } from "../lib/router";
 import type { Store } from "../lib/store";
 import { localDate } from "../lib/time";
 import { useStore } from "../useStore";
+import { CollectionForm } from "./CollectionForm";
 import { plural, userName } from "./labels";
 import { Page } from "./Page";
 
@@ -38,6 +44,15 @@ const SHOWN_ENDED_MS = 14 * DAY_MS;
 export function holdLabel(store: Store, h: Hold): string {
   const who = handleFor(store, h.id) ?? "someone";
   return `${h.count != null ? `${h.count} for` : "For"} ${who} · until ${h.expires_on}`;
+}
+
+/** How a hold is to be collected, once an Outreach worker has booked it (FR-HLD-14). Empty until then. */
+export function collectionLabel(store: Store, h: Hold): string {
+  if (h.collection === "in_person") return "Collected in person";
+  if (h.collection !== "delivery") return "";
+  const where = dropOffFor(store, h.id);
+  const who = h.delivery_by ? `${userName(store.state, h.delivery_by)} is delivering` : "nobody has taken it";
+  return `Delivery ${deliveryTime(h.delivery_at)}${where ? ` · to ${where}` : ""} · ${who}`;
 }
 
 const ENDED: Record<string, string> = {
@@ -64,6 +79,7 @@ export function ItemHolds({ store, it, onDone }: { store: Store; it: Item; onDon
   const [count, setCount] = useState("1");
   const [until, setUntil] = useState("");
   const [moving, setMoving] = useState<string | null>(null);
+  const [booking, setBooking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const name = nameOf(store.state, it.id);
@@ -82,6 +98,7 @@ export function ItemHolds({ store, it, onDone }: { store: Store; it: Item; onDon
     setBusy(false);
     setPlacing(false);
     setMoving(null);
+    setBooking(null);
     onDone(message);
   }
 
@@ -110,8 +127,31 @@ export function ItemHolds({ store, it, onDone }: { store: Store; it: Item; onDon
         <div className="hold" key={h.id}>
           <p className="notice" role="note">
             On hold · {holdLabel(store, h)}
+            {h.collection && (
+              <>
+                <br />
+                {collectionLabel(store, h)}
+              </>
+            )}
           </p>
-          {moving === h.id ? (
+          {booking === h.id ? (
+            <CollectionForm
+              id={h.id}
+              today={day}
+              expiresOn={h.expires_on}
+              booked={{ collection: h.collection, delivery_at: h.delivery_at, drop_off: dropOffFor(store, h.id) }}
+              deliveredBy="Delivered by Staff"
+              onCancel={() => setBooking(null)}
+              onSave={(body) =>
+                run(
+                  () => bookCollection(store, h.id, body),
+                  body.method === "delivery"
+                    ? `Delivery booked for ${deliveryTime(body.at)} · ${name}`
+                    : `To be collected in person · ${name}`,
+                )
+              }
+            />
+          ) : moving === h.id ? (
             <form
               className="row"
               onSubmit={(e) => {
@@ -163,6 +203,19 @@ export function ItemHolds({ store, it, onDone }: { store: Store; it: Item; onDon
               >
                 Put back
               </button>
+              {h.requested && (
+                // The Outreach worker who asked books this themselves; Staff can do it for them (FR-HLD-61).
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setError(null);
+                    setBooking(h.id);
+                  }}
+                >
+                  {h.collection ? "Change collection" : "Book collection…"}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -254,6 +307,7 @@ export function Holds({ store }: { store: Store }) {
   return (
     <Page title="Holds" back="/">
       <Requests store={store} />
+      <Deliveries store={store} />
       {live.length === 0 ? (
         <p>Nothing is on hold.</p>
       ) : (
@@ -266,6 +320,8 @@ export function Holds({ store }: { store: Store }) {
                   <span className="item-name">{nameOf(store.state, h.item_id)}</span>
                   <span className="muted small">
                     {holdLabel(store, h)} · placed by {userName(store.state, h.created_by)}
+                    {h.collection === "in_person" && " · collected in person"}
+                    {h.collection === "delivery" && " · delivery"}
                   </span>
                 </button>
               </li>
@@ -369,6 +425,87 @@ function Requests({ store }: { store: Store }) {
                     onClick={() => void run(() => declineHold(store, h.id))}
                   >
                     Decline
+                  </button>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * Deliveries Outreach workers have booked, soonest first (FR-HLD-24). A delivery is a time and a
+ * drop-off point (FR-HLD-15). Any Staff member or Administrator takes one, and is then named on the
+ * hold (FR-HLD-25); taking one someone else has takes it over. The goods are handed out from the
+ * item's page when the delivery is made.
+ */
+function Deliveries({ store }: { store: Store }) {
+  const booked = deliveries(store.state, today(store));
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (booked.length === 0) return null;
+  const me = store.meta.user?.id;
+
+  async function take(id: string) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await takeDelivery(store, id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not record it");
+    }
+    setBusy(false);
+  }
+
+  return (
+    <section aria-label="Deliveries">
+      <h2 className="section">Deliveries</h2>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      <ul className="items">
+        {booked.map((h) => {
+          const name = nameOf(store.state, h.item_id);
+          const where = dropOffFor(store, h.id);
+          return (
+            <li key={h.id} className="request">
+              <button
+                className="item"
+                type="button"
+                onClick={() => navigate(`/items/${resolveItem(store.state, h.item_id)}`)}
+              >
+                <span className="item-name">
+                  {h.count != null ? `${h.count} × ` : ""}
+                  {name}
+                </span>
+                <span className="muted small">
+                  {deliveryTime(h.delivery_at)} · to {where ?? "a drop-off point not yet synced"} · for{" "}
+                  {handleFor(store, h.id) ?? "someone"} · booked by {userName(store.state, h.created_by)}
+                </span>
+              </button>
+              {h.delivery_by === me ? (
+                <p className="notice" role="note">
+                  You are delivering this.
+                </p>
+              ) : (
+                <div className="row">
+                  {h.delivery_by && (
+                    <span className="muted small">{userName(store.state, h.delivery_by)} is delivering this.</span>
+                  )}
+                  <button
+                    type="button"
+                    className={h.delivery_by ? undefined : "primary"}
+                    disabled={busy}
+                    aria-label={`${h.delivery_by ? "Take over" : "Take"} the delivery of ${name}`}
+                    onClick={() => void take(h.id)}
+                  >
+                    {h.delivery_by ? "Take over" : "I will deliver it"}
                   </button>
                 </div>
               )}

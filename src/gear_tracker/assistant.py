@@ -2114,7 +2114,13 @@ def _waiting_hold(state: dict[str, Any], hold_id: str) -> dict[str, Any]:
     return hold
 
 
-def _hold_brief(state: dict[str, Any], hold: dict[str, Any], handles: dict[str, str], today: str) -> dict[str, Any]:
+def _hold_brief(
+    state: dict[str, Any],
+    hold: dict[str, Any],
+    handles: dict[str, str],
+    today: str,
+    places: dict[str, str] | None = None,
+) -> dict[str, Any]:
     state_now = views.hold_state(hold, today)
     live = state_now in ("live", "waiting")
     out = {
@@ -2133,6 +2139,13 @@ def _hold_brief(state: dict[str, Any], hold: dict[str, Any], handles: dict[str, 
         out["approved_by"] = views.user_name(state, hold["approved_by"])
     if live and hold["id"] in handles:
         out["for"] = handles[hold["id"]]
+    if state_now == "live" and hold.get("collection"):
+        out["collection"] = hold["collection"]
+        if hold["collection"] == "delivery":
+            out["delivery_at"] = hold.get("delivery_at")
+            out["delivery_by"] = views.user_name(state, hold["delivery_by"]) if hold.get("delivery_by") else None
+            if places and hold["id"] in places:
+                out["drop_off"] = places[hold["id"]]
     return out
 
 
@@ -2160,7 +2173,11 @@ def list_holds(item_id: str | None = None, include_ended: StrictBool = False) ->
     were handed out, put back, declined, or expired.
 
     A `state` of `waiting` is a request from an Outreach worker (FR-HLD-05): it sets nothing aside until an
-    Administrator answers it with `approve_hold` or `decline_hold`."""
+    Administrator answers it with `approve_hold` or `decline_hold`.
+
+    `collection` says how an Outreach worker booked an approved hold to be collected (FR-HLD-14): `in_person`,
+    or `delivery` with `delivery_at` (a local day and time), `drop_off`, and `delivery_by`, the Staff member
+    who took it with `take_delivery`, or null while nobody has."""
     with _open() as (conn, _who):
         state = _state(conn)
         today = views.today(now_ms())
@@ -2172,7 +2189,8 @@ def list_holds(item_id: str | None = None, include_ended: StrictBool = False) ->
             and (target is None or views.resolve_item(state, str(h.get("item_id"))) == target)
         ]
         handles = holds.handles(conn)
-        return {"holds": [_hold_brief(state, h, handles, today) for h in found], "count": len(found)}
+        places = holds.drop_offs(conn)
+        return {"holds": [_hold_brief(state, h, handles, today, places) for h in found], "count": len(found)}
 
 
 def place_hold(item_id: str, handle: str, expires_on: IsoDate, count: Count | None = None) -> dict[str, Any]:
@@ -2277,6 +2295,61 @@ def decline_hold(hold_id: str) -> dict[str, Any]:
         hold = _waiting_hold(_state(conn), hold_id)
         _push(conn, who, [_draft("hold", hold["id"], "hold_ended", {"reason": "declined"})])
         return {"hold_id": hold["id"], "state": "declined"}
+
+
+def book_collection(
+    hold_id: str,
+    method: Literal["in_person", "delivery"],
+    at: str | None = None,
+    drop_off: str | None = None,
+) -> dict[str, Any]:
+    """Book or change how a hold an Outreach worker asked for is collected, on their behalf (FR-HLD-61).
+    `in_person` takes nothing else. `delivery` needs `at`, a day and time on the local clock like
+    2026-11-20T14:30, from today to the hold's last day, and `drop_off`, a few words for a place to meet
+    and nothing about the client: no name, no room number (FR-HLD-15). The worker and the Administrators are
+    told (FR-HLD-54). Refused on a hold Staff placed, a request not yet approved, and a hold that has ended."""
+    with _open() as (conn, who):
+        hold = _live_hold(_state(conn), hold_id)
+        if not hold.get("requested"):
+            raise Conflict("collection is booked only on a hold an Outreach worker asked for")
+        today = views.today(now_ms())
+        payload: dict[str, Any] = {"method": method}
+        place = holds.tidy_drop_off(drop_off)
+        if method == "delivery":
+            if at is None or place is None:
+                raise BadRequest("a delivery needs a time and a drop-off point (FR-HLD-15)")
+            try:
+                datetime.datetime.strptime(at, "%Y-%m-%dT%H:%M")  # noqa: DTZ007 - a time on the local clock, no zone
+            except ValueError:
+                raise BadRequest("give the time like 2026-11-20T14:30") from None
+            if at[:10] < today:
+                raise BadRequest("a delivery is on a day from today on (FR-HLD-51)")
+            if at[:10] > str(hold.get("expires_on")):
+                raise Conflict("a delivery is on or before the day the hold runs out; extend the hold first")
+            payload["at"] = at
+        elif at is not None or place is not None:
+            raise BadRequest("collecting in person has no time or drop-off point")
+        _push(conn, who, [_draft("hold", hold["id"], "collection_booked", payload)])
+        if place is not None:
+            holds.take_drop_off(conn, hold["id"], place, who.user_id, now_ms())
+        state = _state(conn)
+        return _hold_brief(state, _hold(state, hold_id), holds.handles(conn), today, holds.drop_offs(conn))
+
+
+def take_delivery(hold_id: str) -> dict[str, Any]:
+    """Take on a delivery an Outreach worker booked (FR-HLD-24): you become the person making it, are named
+    on the hold, and the others named on it are told (FR-HLD-25, FR-HLD-55). Taking one someone else has
+    takes it over from them. Refused unless the hold is in force and booked for delivery. Hand the goods
+    over with `hand_out_hold` when the delivery is made."""
+    with _open() as (conn, who):
+        hold = _live_hold(_state(conn), hold_id)
+        if hold.get("collection") != "delivery":
+            raise Conflict("no delivery is booked for this hold")
+        if hold.get("delivery_by") != who.user_id:
+            _push(conn, who, [_draft("hold", hold["id"], "delivery_taken", {})])
+        state = _state(conn)
+        today = views.today(now_ms())
+        return _hold_brief(state, _hold(state, hold_id), holds.handles(conn), today, holds.drop_offs(conn))
 
 
 def receive(item_id: str, count: Count, source: Source | None = None) -> dict[str, Any]:
@@ -3308,6 +3381,8 @@ TOOLS = [
     hand_out_hold,
     approve_hold,
     decline_hold,
+    book_collection,
+    take_delivery,
     weigh,
     refilled,
     recount,

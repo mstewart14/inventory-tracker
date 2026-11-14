@@ -9,7 +9,8 @@ sweep expires it, and its handle is forgotten when it ends.
 from __future__ import annotations
 
 import sqlite3
-from typing import Annotated, Any
+from datetime import datetime
+from typing import Annotated, Any, Literal
 
 from pydantic import Field, StringConstraints
 
@@ -41,6 +42,15 @@ class Move(Strict):
     expires_on: IsoDate
 
 
+class Booking(Strict):
+    """How an approved hold is collected (FR-HLD-14). A delivery is a time and a drop-off point, and
+    nothing else (FR-HLD-15)."""
+
+    method: Literal["in_person", "delivery"]
+    at: events.LocalMinute | None = None
+    drop_off: Annotated[str, StringConstraints(max_length=400)] | None = None
+
+
 def _require_outreach(who: Principal) -> None:
     _require_active(who)
     if who.role != "outreach":
@@ -53,9 +63,12 @@ def _after_today(day: str, today: str) -> None:
         raise BadRequest("a hold runs until a day after today (FR-HLD-03)")
 
 
-def _brief(state: dict[str, Any], hold: dict[str, Any], handles: dict[str, str], today: str) -> dict[str, Any]:
+def _brief(
+    state: dict[str, Any], hold: dict[str, Any], handles: dict[str, str], places: dict[str, str], today: str
+) -> dict[str, Any]:
     """One of the worker's own holds as they see it (FR-HLD-07). The item's name and no more of it."""
     status = views.hold_state(hold, today)
+    taken = status == "live" and bool(hold.get("delivery_by"))
     return {
         "id": hold["id"],
         "item": views.name_of(state, views.resolve_item(state, str(hold.get("item_id")))),
@@ -65,6 +78,12 @@ def _brief(state: dict[str, Any], hold: dict[str, Any], handles: dict[str, str],
         "state": "approved" if status == "live" else status,
         "for": handles.get(hold["id"]),
         "requested_at": hold.get("added_at"),
+        # How it is collected, once booked (FR-HLD-14). Only while the hold is in force.
+        "collection": hold.get("collection") if status == "live" else None,
+        "delivery_at": hold.get("delivery_at") if status == "live" else None,
+        "drop_off": places.get(hold["id"]) if status == "live" else None,
+        # The Staff member bringing it, by name, once one has taken it (FR-HLD-25).
+        "delivery_by": views.user_name(state, hold["delivery_by"]) if taken else None,
     }
 
 
@@ -83,7 +102,8 @@ def my_holds(conn: sqlite3.Connection, who: Principal, now: int | None = None) -
         and (views.hold_state(h, today) in ("live", "waiting") or (h.get("ended_at") or now) >= now - KEPT_MS)
     ]
     mine.sort(key=lambda h: h["id"], reverse=True)
-    return [_brief(state, h, handles, today) for h in mine]
+    places = holds.drop_offs(conn)
+    return [_brief(state, h, handles, places, today) for h in mine]
 
 
 def request_hold(conn: sqlite3.Connection, who: Principal, body: Request, now: int | None = None) -> list[str]:
@@ -157,6 +177,56 @@ def move_expiry(conn: sqlite3.Connection, who: Principal, hold_id: str, body: Mo
     _after_today(body.expires_on, today)
     if body.expires_on == hold.get("expires_on"):
         return
+    if hold.get("collection") == "delivery" and str(hold.get("delivery_at") or "")[:10] > body.expires_on:
+        raise Conflict("a delivery is booked for after that day; move the delivery first")
     change = {"field": "expires_on", "value": body.expires_on, "old": hold.get("expires_on")}
     event = events.append_server(conn, who.user_id, "hold", hold_id, "field_changed", change, now)
+    holds.after(conn, event)
+
+
+def book_collection(
+    conn: sqlite3.Connection, who: Principal, hold_id: str, body: Booking, now: int | None = None
+) -> None:
+    """Say how the worker's own approved hold will be collected: in person, or delivered at a time to a
+    drop-off point (FR-HLD-14, FR-HLD-15). It can be booked again to change it. The time goes on the
+    log; the drop-off point is kept beside it and deleted when the hold ends (FR-HLD-53)."""
+    _require_outreach(who)
+    now = now_ms() if now is None else now
+    today = views.today(now)
+    hold = derived.get_entity(conn, "hold", hold_id)
+    if hold is None or hold.get("created_by") != who.user_id:
+        raise NotFound("no such hold")
+    if views.is_waiting(hold, today):
+        raise Conflict("this request has not been approved yet")
+    if not views.is_live(hold, today):
+        raise Conflict("this hold has ended")
+    payload: dict[str, Any] = {"method": body.method}
+    place = holds.tidy_drop_off(body.drop_off)
+    if body.method == "delivery":
+        if body.at is None:
+            raise BadRequest("say when the delivery is wanted")
+        try:
+            datetime.strptime(body.at, "%Y-%m-%dT%H:%M")  # noqa: DTZ007 - a time on the local clock, no zone
+        except ValueError:
+            raise BadRequest("that is not a day and a time") from None
+        if body.at[:10] < today:
+            raise BadRequest("a delivery is on a day from today on")
+        if body.at[:10] > str(hold.get("expires_on")):
+            raise Conflict("a delivery is on or before the day the hold runs out; move that day first")
+        if place is None:
+            raise BadRequest("say where the delivery is dropped off")
+        payload["at"] = body.at
+    elif body.at is not None or place is not None:
+        raise BadRequest("collecting in person has no time or drop-off point")
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        event = events.append_server(conn, who.user_id, "hold", hold_id, "collection_booked", payload, now)
+        if place is None:
+            holds.drop_drop_off(conn, hold_id)
+        else:
+            holds.set_drop_off(conn, hold_id, place, who.user_id, now)
+        conn.execute("COMMIT")
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
     holds.after(conn, event)

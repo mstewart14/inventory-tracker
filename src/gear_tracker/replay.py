@@ -124,6 +124,12 @@ State = dict[str, dict[str, dict[str, Any]]]
 # `approved_by` and `approved_at`; on any other hold it does nothing, so the first of an approval
 # and a decline in replay order stands. `hold_ended {reason: "declined"}` ends a waiting one,
 # and does nothing to a live one.
+#
+# `collection_booked {method, at?}` says how a live hold's goods reach the client (FR-HLD-14):
+# `collection` is "in_person" or "delivery", and a delivery has `delivery_at`, a local day and time.
+# The last booking stands. Booking in person removes `delivery_at` and `delivery_by`.
+# `delivery_taken {}` sets `delivery_by` to its actor on a live hold booked for delivery, and does
+# nothing otherwise (FR-HLD-25). Where a delivery goes is never on the log (FR-HLD-53).
 
 # Set by replay, never by a device. A created or field_changed that names one is rejected.
 DERIVED_FIELDS = frozenset(
@@ -138,6 +144,9 @@ DERIVED_FIELDS = frozenset(
         "modified_at",
         "approved_by",
         "approved_at",
+        "collection",
+        "delivery_at",
+        "delivery_by",
         "item_id",
         "bound_at",
         "photos",
@@ -334,6 +343,19 @@ def apply(entity: dict[str, Any], event: Event) -> None:
                 entity["state"] = "live"
                 entity["approved_by"] = event.actor_id
                 entity["approved_at"] = event.effective_at
+        case "collection_booked":
+            # Only a hold in force is collected (FR-HLD-14). The last booking stands.
+            if entity.get("state", "live") == "live":
+                entity["collection"] = p["method"]
+                if p["method"] == "delivery":
+                    entity["delivery_at"] = p["at"]
+                else:
+                    entity.pop("delivery_at", None)
+                    entity.pop("delivery_by", None)
+        case "delivery_taken":
+            # Whoever took it last is making it (FR-HLD-25). Nothing to take unless a delivery is booked.
+            if entity.get("state", "live") == "live" and entity.get("collection") == "delivery":
+                entity["delivery_by"] = event.actor_id
         case "hold_ended":
             # The first ending stands (FR-HLD-10, FR-HLD-11, FR-HLD-16), of a hold or of a request.
             # A decline answers a request; it does not end a hold that was approved first.
