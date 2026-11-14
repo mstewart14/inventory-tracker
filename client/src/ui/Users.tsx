@@ -451,7 +451,7 @@ export function PrintableJoinLink({
   return (
     <>
       <header>
-        <h1 className="join-heading">{group ? `${group} Gear Tracker` : "Gear Tracker"}</h1>
+        <h1 className="join-heading">{group ? `${group} Inventory Tracker` : "Inventory Tracker"}</h1>
       </header>
       <main>
         <p className="join-lead">

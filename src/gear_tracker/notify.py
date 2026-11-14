@@ -59,8 +59,8 @@ def set_categories(conn: sqlite3.Connection, user_id: str, prefs: Preferences) -
 
 
 def _label(group: str) -> str:
-    """ "10th Richmond Gear Tracker", or just "Gear Tracker" before a group name is set. Matches mail.py."""
-    return f"{group} Gear Tracker" if group else "Gear Tracker"
+    """ "10th Richmond Inventory Tracker", or just "Inventory Tracker" before a group name is set. Matches mail.py."""
+    return f"{group} Inventory Tracker" if group else "Inventory Tracker"
 
 
 def _group(conn: sqlite3.Connection) -> dict[str, Any]:

@@ -40,7 +40,7 @@ export function SignIn({ store, api, onSignedIn, notice }: Props) {
   return (
     <form ref={form} className="app" onSubmit={submit}>
       <header>
-        <h1>Gear Tracker</h1>
+        <h1>Inventory Tracker</h1>
       </header>
       <main>
         {notice && (

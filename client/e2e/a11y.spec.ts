@@ -20,7 +20,7 @@ async function signIn(page: Page) {
   await page.getByLabel("Password").fill("correct horse");
   await page.getByRole("button", { name: "Sign in" }).click();
   // Both layouts land on a home screen with the group's name at the top of it.
-  await expect(page.getByRole("heading", { level: 1, name: /Gear Tracker/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /Inventory Tracker/ })).toBeVisible();
 }
 
 // The layout turns at 900 px, and the home screen and the inventory differ

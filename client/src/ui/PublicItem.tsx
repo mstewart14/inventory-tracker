@@ -37,7 +37,7 @@ export function PublicItem({ api, code, onSignIn }: { api: Api; code: string; on
 
   if (error)
     return (
-      <Shell title="Gear Tracker" actions={signIn}>
+      <Shell title="Inventory Tracker" actions={signIn}>
         <p className="error" role="alert">
           {error}
         </p>
@@ -46,13 +46,13 @@ export function PublicItem({ api, code, onSignIn }: { api: Api; code: string; on
 
   if (!found)
     return (
-      <Shell title="Gear Tracker">
+      <Shell title="Inventory Tracker">
         <p className="muted">Looking it up…</p>
       </Shell>
     );
 
   return (
-    <Shell title={found.group.name || "Gear Tracker"} actions={signIn}>
+    <Shell title={found.group.name || "Inventory Tracker"} actions={signIn}>
       <p>Found this? Please tell us where it is.</p>
       {found.group.contact && (
         <p>

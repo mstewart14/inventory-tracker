@@ -1,6 +1,6 @@
 BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//Gear Tracker Tests//EN
+PRODID:-//Inventory Tracker Tests//EN
 BEGIN:VEVENT
 UID:troop-meeting-1@example.org
 SUMMARY:Troop Meeting

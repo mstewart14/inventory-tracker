@@ -97,7 +97,7 @@ def prune(into: Path, keep_days: int, now: float) -> list[Path]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="gear-backup", description="Snapshot the Gear Tracker database.")
+    parser = argparse.ArgumentParser(prog="gear-backup", description="Snapshot the Inventory Tracker database.")
     parser.add_argument("--db", required=True, help="path to the SQLite file")
     parser.add_argument("--into", required=True, help="directory to write the snapshot into")
     parser.add_argument("--keep", type=int, default=KEEP_DAYS, help=f"days to keep (default {KEEP_DAYS})")

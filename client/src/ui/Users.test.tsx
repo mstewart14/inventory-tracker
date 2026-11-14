@@ -413,7 +413,7 @@ test("Print opens a page titled for the group, with the QR and no URL, and Back 
   await user.click(await screen.findByRole("button", { name: "Print" }));
 
   expect(screen.queryByRole("status")).not.toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "10th Richmond Gear Tracker" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "10th Richmond Inventory Tracker" })).toBeInTheDocument();
   expect(screen.getByText(/Scan this code to set up your account/)).toBeInTheDocument();
   expect(screen.queryByText(`${location.origin}/join?link=JOIN-TOKEN`)).not.toBeInTheDocument();
   expect(document.querySelector(".qr-print svg")).toBeTruthy();

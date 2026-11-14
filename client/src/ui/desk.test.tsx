@@ -130,7 +130,7 @@ test("the desk home opens on what needs a person, then what is out", async () =>
   await store.receive([joined("u1", "Alice"), found("01000000000000000000000001", "by the gate", f.tent)], 2);
   mount();
 
-  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Gear Tracker");
+  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Inventory Tracker");
   const attention = within(screen.getByRole("list", { name: "Needs attention" })).getAllByRole("button");
   expect(attention.map((b) => b.textContent)).toEqual([
     "Found gear · 1",
@@ -497,7 +497,7 @@ test("the desk home ignores list parameters meant for the table", async () => {
   await fixture();
   navigate("/?q=nothing-matches-this");
   mount();
-  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Gear Tracker");
+  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Inventory Tracker");
   expect(screen.getByText("Nothing is out.")).toBeInTheDocument();
 });
 

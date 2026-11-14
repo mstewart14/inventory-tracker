@@ -504,7 +504,7 @@ test("back with a half-typed new item asks; Keep editing stays, Save creates it,
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "Back" }));
   expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-  expect(screen.getByText("Gear Tracker")).toBeInTheDocument();
+  expect(screen.getByText("Inventory Tracker")).toBeInTheDocument();
 
   navigate("/items/new");
   await user.type(await screen.findByLabelText("Name"), "Lantern");
@@ -518,13 +518,13 @@ test("back with a half-typed new item asks; Keep editing stays, Save creates it,
   await user.click(screen.getByRole("button", { name: "Back" }));
   await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save" }));
   await waitFor(() => expect(inv.items(store.state).map((i) => i.name)).toContain("Lantern"));
-  expect(await screen.findByText("Gear Tracker")).toBeInTheDocument();
+  expect(await screen.findByText("Inventory Tracker")).toBeInTheDocument();
 
   navigate("/items/new");
   await user.type(await screen.findByLabelText("Name"), "Nope");
   await user.click(screen.getByRole("button", { name: "Back" }));
   await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Discard" }));
-  expect(await screen.findByText("Gear Tracker")).toBeInTheDocument();
+  expect(await screen.findByText("Inventory Tracker")).toBeInTheDocument();
   expect(inv.items(store.state).map((i) => i.name)).not.toContain("Nope");
 });
 
@@ -537,7 +537,7 @@ test("back with an unsaved group name asks; Save keeps it and goes home", async 
   const dialog = await screen.findByRole("alertdialog");
   await user.click(within(dialog).getByRole("button", { name: "Save" }));
   await waitFor(() => expect(inv.group(store.state).name).toBe("10th Richmond"));
-  expect(await screen.findByText("Gear Tracker")).toBeInTheDocument();
+  expect(await screen.findByText("Inventory Tracker")).toBeInTheDocument();
   expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
 });
 
@@ -550,7 +550,7 @@ test("back with a location typed but not added asks; Discard drops it", async ()
   await user.click(screen.getByRole("button", { name: "Back" }));
   const dialog = await screen.findByRole("alertdialog");
   await user.click(within(dialog).getByRole("button", { name: "Discard" }));
-  expect(await screen.findByText("Gear Tracker")).toBeInTheDocument();
+  expect(await screen.findByText("Inventory Tracker")).toBeInTheDocument();
   expect(inv.locations(store.state).map((l) => l.name)).toEqual(["Cold locker", "Warm locker"]);
 });
 
@@ -623,7 +623,7 @@ test("a group name that arrives after the settings page opens fills the form", a
   await waitFor(() => expect(inv.group(store.state).name).toBe("10th Richmond Sea Scouts"));
   expect(await screen.findByText("Saved")).toBeInTheDocument();
   // The group name says whose copy this is, in the tab and under the home-screen icon.
-  await waitFor(() => expect(document.title).toBe("10th Richmond Sea Scouts · Gear Tracker"));
+  await waitFor(() => expect(document.title).toBe("10th Richmond Sea Scouts · Inventory Tracker"));
 });
 
 test("the overdue period is one group setting; blank means never (FR-OUT-14)", async () => {
@@ -1091,7 +1091,7 @@ test("the scanner walk: an unassigned code, a new item, and back to where it sta
   // And one step back from the scanner is home, not the code screen again.
   await user.click(screen.getByRole("button", { name: "Back" }));
   expect(location.pathname).toBe("/");
-  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Gear Tracker");
+  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Inventory Tracker");
 });
 
 test("a replacement sticker: back from the item goes home, not through the scanner", async () => {

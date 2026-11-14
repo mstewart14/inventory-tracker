@@ -103,7 +103,7 @@ export function Join({ store, api, onJoined, onSignOut, native = NATIVE }: Props
   return (
     <form ref={form} className="app" onSubmit={submit} noValidate>
       <header>
-        <h1>Gear Tracker</h1>
+        <h1>Inventory Tracker</h1>
       </header>
       <main>
         {signedIn ? (

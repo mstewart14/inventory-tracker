@@ -87,7 +87,7 @@ export function Settings({ store, shell }: Props) {
         {__GIT_SHA__ === "dev" ? (
           "dev"
         ) : (
-          <a href={`https://github.com/varju/10th-richmond-gear-tracker/commit/${__GIT_SHA__}`}>{__GIT_SHA__}</a>
+          <a href={`https://github.com/mstewart14/inventory-tracker/commit/${__GIT_SHA__}`}>{__GIT_SHA__}</a>
         )}
       </p>
       {app && (

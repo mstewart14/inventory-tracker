@@ -51,7 +51,7 @@ export function Desk({ store }: { store: Store }) {
   const soon = upcoming(state, todayIso(now())).filter((r) => r.starts <= cutoff);
 
   return (
-    <Page title="Gear Tracker">
+    <Page title="Inventory Tracker">
       <h2 className="section">Needs attention</h2>
       {attention.length === 0 ? (
         <p>All clear.</p>

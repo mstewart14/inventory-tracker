@@ -29,7 +29,7 @@ def read_password(args: argparse.Namespace) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="gear-admin", description="Gear Tracker server administration.")
+    parser = argparse.ArgumentParser(prog="gear-admin", description="Inventory Tracker server administration.")
     parser.add_argument("--db", required=True, help="path to the SQLite file")
     sub = parser.add_subparsers(dest="command", required=True)
 

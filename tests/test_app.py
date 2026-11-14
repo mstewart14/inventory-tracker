@@ -732,11 +732,11 @@ def site(db_path, tmp_path):
     dist = tmp_path / "dist"
     (dist / "assets").mkdir(parents=True)
     (dist / "index.html").write_text(
-        "<html><head><title>Gear Tracker</title>"
-        '<meta name="apple-mobile-web-app-title" content="Gear" /></head>'
+        "<html><head><title>Inventory Tracker</title>"
+        '<meta name="apple-mobile-web-app-title" content="Inventory" /></head>'
         "<body><h1>app</h1></body></html>"
     )
-    manifest = {"name": "Gear Tracker", "short_name": "Gear", "display": "standalone"}
+    manifest = {"name": "Inventory Tracker", "short_name": "Inventory", "display": "standalone"}
     (dist / "manifest.webmanifest").write_text(json.dumps(manifest))
     (dist / "assets" / "app.js").write_text("console.log(1)")
     (tmp_path / "secret.txt").write_text("no")
@@ -759,14 +759,14 @@ def test_the_manifest_carries_the_group_name(site, db_path):
     r = site.get("/manifest.webmanifest")
     assert r.headers["content-type"] == "application/manifest+json"
     assert r.headers["cache-control"] == "no-cache"
-    assert r.json()["name"] == "Gear Tracker"
+    assert r.json()["name"] == "Inventory Tracker"
 
     with open_db(db_path) as conn:
         events.append_server(conn, "alice", "setting", "group", "created", {"name": "10th Richmond"})
 
     body = site.get("/manifest.webmanifest").json()
-    assert body["name"] == "10th Richmond Gear"
-    assert body["short_name"] == "10th Richmond Gear"
+    assert body["name"] == "10th Richmond Inventory"
+    assert body["short_name"] == "10th Richmond Inventory"
     # Everything else the build wrote is untouched.
     assert body["display"] == "standalone"
 
@@ -774,8 +774,8 @@ def test_the_manifest_carries_the_group_name(site, db_path):
 def test_index_carries_the_group_name(site, db_path):
     # No group set yet: the build's own names stand.
     r = site.get("/")
-    assert 'content="Gear"' in r.text
-    assert "<title>Gear Tracker</title>" in r.text
+    assert 'content="Inventory"' in r.text
+    assert "<title>Inventory Tracker</title>" in r.text
 
     with open_db(db_path) as conn:
         events.append_server(conn, "alice", "setting", "group", "created", {"name": "10th Richmond"})
@@ -783,8 +783,8 @@ def test_index_carries_the_group_name(site, db_path):
     for path in ("/", "/some/client/route"):
         r = site.get(path)
         assert r.headers["cache-control"] == "no-cache"
-        assert 'content="10th Richmond Gear"' in r.text
-        assert "<title>10th Richmond · Gear Tracker</title>" in r.text
+        assert 'content="10th Richmond Inventory"' in r.text
+        assert "<title>10th Richmond · Inventory Tracker</title>" in r.text
 
 
 def test_api_routes_win_over_the_client(site):
@@ -1653,7 +1653,7 @@ def test_the_privacy_policy_opens_signed_out_and_names_the_group_and_its_mail(si
     assert page.status_code == 200
     assert page.headers["content-type"].startswith("text/html")
     assert "<h1>app</h1>" not in page.text
-    assert "10th Richmond uses Gear Tracker" in page.text
+    assert "10th Richmond uses Inventory Tracker" in page.text
     assert 'href="mailto:gear@example.org"' in page.text
 
 
@@ -1671,11 +1671,11 @@ def test_with_no_mail_set_up_the_policy_says_to_ask_the_leaders(site, db_path):
 
 
 def test_the_policy_reads_without_a_group_name_and_escapes_one(site, db_path):
-    assert "The group uses Gear Tracker" in site.get("/privacy").text
+    assert "The group uses Inventory Tracker" in site.get("/privacy").text
 
     set_group(db_path, "<b>Scouts</b>")
 
-    assert "&lt;b&gt;Scouts&lt;/b&gt; uses Gear Tracker" in site.get("/privacy").text
+    assert "&lt;b&gt;Scouts&lt;/b&gt; uses Inventory Tracker" in site.get("/privacy").text
 
 
 def test_a_lock_is_recorded_as_locked(real, failures):

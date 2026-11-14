@@ -1,7 +1,7 @@
 # Stories
 
-What people actually do with Gear Tracker, in the order they do it. Requirements say what the system must do; stories
-say what a Friday evening looks like.
+What people actually do with Inventory Tracker, in the order they do it. Requirements say what the system must do;
+stories say what a Friday evening looks like.
 
 ## Documents
 

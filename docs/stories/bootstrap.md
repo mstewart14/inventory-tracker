@@ -5,9 +5,9 @@ piece of work in the project.
 
 ## S-BOOT-06 Stand the server up
 
-A volunteer installs Gear Tracker on the box in their basement. They copy the example seed file, fill in their name, the
-group's name and domain, and the mail account, and start it. The app comes up configured and they sign in. Months later
-they wipe it and start again; the seed file is still there, so it comes up the same.
+A volunteer installs Inventory Tracker on the box in their basement. They copy the example seed file, fill in their
+name, the group's name and domain, and the mail account, and start it. The app comes up configured and they sign in.
+Months later they wipe it and start again; the seed file is still there, so it comes up the same.
 
 - The first Admin is made from the seed file or the command line; there is no open sign-up
 - The seed file lives on the host, never in the repository

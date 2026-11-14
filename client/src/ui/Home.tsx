@@ -31,7 +31,7 @@ export function Home({ store }: { store: Store }) {
 
   return (
     <Page
-      title="Gear Tracker"
+      title="Inventory Tracker"
       actions={
         <>
           <button className="primary tall" type="button" onClick={() => navigate("/scan")}>

@@ -349,7 +349,7 @@ def test_a_lock_mails_every_admin_once(db_path, smtp):
     time.sleep(0.2)
     assert sorted(m["To"] for m in smtp.messages) == ["alex@example.org", "dana@example.org"]
     message = smtp.messages[0]
-    assert message["Subject"] == "10th Richmond Gear Tracker: account locked"
+    assert message["Subject"] == "10th Richmond Inventory Tracker: account locked"
     body = cast(bytes, message.get_payload(decode=True)).decode()
     assert "Bea's account (bea@example.org) is locked for 15 minutes" in body
     assert "203.0.113.7" in body

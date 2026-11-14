@@ -1,6 +1,6 @@
 # Architecture
 
-How Gear Tracker is built, and why. Requirements live in [requirements/](requirements/).
+How Inventory Tracker is built, and why. Requirements live in [requirements/](requirements/).
 
 The server is small. The client is where the work is.
 

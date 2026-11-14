@@ -131,7 +131,7 @@ def migrate(db_path: str | Path, directory: Path = MIGRATIONS_DIR, dry_run: bool
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Bring a Gear Tracker database up to date.")
+    parser = argparse.ArgumentParser(description="Bring a Inventory Tracker database up to date.")
     parser.add_argument("--db", required=True, help="path to the SQLite file")
     parser.add_argument("--dir", type=Path, default=MIGRATIONS_DIR, help="migrations directory")
     parser.add_argument("--dry-run", action="store_true", help="say what would run, change nothing")

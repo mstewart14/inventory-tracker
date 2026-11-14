@@ -146,8 +146,8 @@ def _authenticate(smtp: smtplib.SMTP, settings: dict[str, Any]) -> None:
 
 
 def _named(group: str) -> str:
-    """ "10th Richmond Gear Tracker", or just "Gear Tracker" before a group name is set."""
-    return f"{group} Gear Tracker" if group else "Gear Tracker"
+    """ "10th Richmond Inventory Tracker", or just "Inventory Tracker" before a group name is set."""
+    return f"{group} Inventory Tracker" if group else "Inventory Tracker"
 
 
 def link_message(kind: Literal["invite", "reset"], group: str, link: str) -> tuple[str, str]:
@@ -169,6 +169,6 @@ def link_message(kind: Literal["invite", "reset"], group: str, link: str) -> tup
 
 def test_message(group: str) -> tuple[str, str]:
     return (
-        "Gear Tracker test message",
+        "Inventory Tracker test message",
         f"{_named(group)} can send mail. If you are reading this, the account works.\n",
     )

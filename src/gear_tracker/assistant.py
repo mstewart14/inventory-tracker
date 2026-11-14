@@ -106,8 +106,9 @@ CALLS_PER_MINUTE = (120, 60_000)
 HISTORY_SHOWN = 10
 """How many of an item's movements a tool returns. The whole log is in the app."""
 
-INSTRUCTIONS = """Gear Tracker holds a Scout group's gear: what we own, where it lives, who has it,
-and what needs fixing. Search before you write, and use the ids the read tools
+INSTRUCTIONS = """Inventory Tracker holds a society's donated goods: what came in, where it is stored, what is
+held for whom, and what was given out. A client is known only by the handle on a hold; never record more
+about one. Search before you write, and use the ids the read tools
 return. Everything you write is recorded as the signed-in person, through the
 assistant. Users, standing join links, mail, group settings, calendar feeds, locations, renaming or deleting
 categories, printed codes, CSV import, deleting an item, and merging duplicates
@@ -3460,7 +3461,7 @@ def _reported(tool: Callable[..., Any]) -> Callable[..., Any]:
 
 def build_server() -> MCPServer:
     """A server with every tool on it. One per app, so two apps in one process do not share a session manager."""
-    server = MCPServer(name="Gear Tracker", instructions=INSTRUCTIONS, version="1")
+    server = MCPServer(name="Inventory Tracker", instructions=INSTRUCTIONS, version="1")
     for tool in TOOLS:
         server.add_tool(_reported(tool))
     return server

@@ -350,7 +350,7 @@ def create_app(
             stop_hold_sweep()
             stop_calendar_refresh()
 
-    app = GearApp(title="Gear Tracker", lifespan=lifespan)
+    app = GearApp(title="Inventory Tracker", lifespan=lifespan)
     app.router.routes.append(assistant.route(mcp))
     failed_sign_ins = FailedSignIns(log_directory(db_path) / FAILED_SIGN_INS)
 
@@ -1030,7 +1030,7 @@ def manifest(file: Path, group: str) -> JSONResponse:
     """
     body = json.loads(file.read_text())
     if group:
-        body["name"] = body["short_name"] = f"{group} Gear"
+        body["name"] = body["short_name"] = f"{group} Inventory"
     return JSONResponse(body, media_type="application/manifest+json", headers={"Cache-Control": "no-cache"})
 
 
@@ -1040,9 +1040,11 @@ def index_html(file: Path, group: str) -> Response:
     if group:
         # A function, not a template: a group name is free text and may hold a backslash.
         text = re.sub(
-            r'(<meta name="apple-mobile-web-app-title" content=")[^"]*(")', lambda m: f"{m[1]}{group} Gear{m[2]}", text
+            r'(<meta name="apple-mobile-web-app-title" content=")[^"]*(")',
+            lambda m: f"{m[1]}{group} Inventory{m[2]}",
+            text,
         )
-        text = re.sub(r"(<title>).*?(</title>)", lambda m: f"{m[1]}{group} · Gear Tracker{m[2]}", text)
+        text = re.sub(r"(<title>).*?(</title>)", lambda m: f"{m[1]}{group} · Inventory Tracker{m[2]}", text)
     return HTMLResponse(text, headers={"Cache-Control": "no-cache"})
 
 
@@ -1069,7 +1071,7 @@ def main(argv: list[str] | None = None) -> int:
 
     import uvicorn
 
-    parser = argparse.ArgumentParser(description="Serve Gear Tracker.")
+    parser = argparse.ArgumentParser(description="Serve Inventory Tracker.")
     parser.add_argument("--db", required=True, help="path to the SQLite file")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)

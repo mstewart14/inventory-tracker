@@ -30,7 +30,7 @@ def page(group: str, mail_from: str | None) -> str:
         ask = f'email <a href="mailto:{escape(mail_from, quote=True)}">{escape(mail_from)}</a>'
     else:
         ask = "contact the group's leaders"
-    title = f"Privacy · {escape(group)}" if group else "Privacy · Gear Tracker"
+    title = f"Privacy · {escape(group)}" if group else "Privacy · Inventory Tracker"
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -44,7 +44,7 @@ def page(group: str, mail_from: str | None) -> str:
 <h1>Privacy</h1>
 <p class="muted">Last updated {UPDATED}</p>
 
-<p>{subject} uses Gear Tracker to keep track of its equipment: what it owns, where it is, and who has it.
+<p>{subject} uses Inventory Tracker to keep track of its equipment: what it owns, where it is, and who has it.
 {subject} runs it, not a company. Its volunteers look after it.</p>
 
 <h2>What we keep</h2>
@@ -59,7 +59,7 @@ when it last connected. Not the full details your browser sends.</li>
 including any contact details they give. Every member can see it, and members who asked for found-gear alerts get it
 by email.</li>
 </ul>
-<p>We keep these records for as long as {who} uses Gear Tracker. They are the history of the group's equipment.</p>
+<p>We keep these records for as long as {who} uses Inventory Tracker. They are the history of the group's equipment.</p>
 
 <h2>Photos</h2>
 <p>The app re-saves most photos smaller before sending them, which drops where they were taken. A photo it cannot
@@ -90,12 +90,12 @@ keep it working and secure. They are deleted after a while.</p>
 </ul>
 
 <h2>AI assistants</h2>
-<p>A member can connect an AI tool of their own to Gear Tracker. That tool gets what it asks for, as far as that member
-is allowed to see: gear, notes and names, for example. The group does not control that tool or what it does with the
-data. Gear Tracker itself uses no AI service.</p>
+<p>A member can connect an AI tool of their own to Inventory Tracker. That tool gets what it asks for, as far as that
+member is allowed to see: gear, notes and names, for example. The group does not control that tool or what it does with
+the data. Inventory Tracker itself uses no AI service.</p>
 
 <h2>Young people</h2>
-<p>Gear Tracker does not ask for anything about the young people in the group. No field asks for youth data. Please
+<p>Inventory Tracker does not ask for anything about the young people in the group. No field asks for youth data. Please
 keep details about youth out of notes.</p>
 
 <h2>Deleting your account</h2>
