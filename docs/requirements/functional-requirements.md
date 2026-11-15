@@ -277,6 +277,8 @@ Reachable by scanning a label or following a link, with no sign-in.
 | FR-PUB-02 | Must     | Anyone can report the item found, with a note and optional contact detail.                                                                                    |
 | FR-PUB-03 | Must     | Found reports reach the Quartermaster in the app, as something to act on.                                                                                     |
 | FR-PUB-07 | Must     | A privacy policy, naming the group and how to reach it, opens with no sign-in.                                                                                |
+| FR-PUB-08 | Must     | The privacy policy says what is kept about a client, who can see it, and when it is removed.                                                                  |
+| FR-PUB-09 | Must     | The privacy policy says what is kept about a donor, and about a person with an account.                                                                       |
 | FR-PUB-04 | Should   | Public submissions are rate-limited and spam-protected.                                                                                                       |
 | FR-PUB-05 | Won't    | Withdrawn: raise a repair ticket from the public page. Members raise tickets when signed in (FR-REP-02); the public route is for found gear only (FR-PUB-02). |
 | FR-PUB-06 | Won't    | Public check-in and check-out. We will not record gear movement by unidentified people.                                                                       |

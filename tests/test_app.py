@@ -1657,7 +1657,7 @@ def test_the_privacy_policy_opens_signed_out_and_names_the_group_and_its_mail(si
     assert 'href="mailto:gear@example.org"' in page.text
 
 
-def test_with_no_mail_set_up_the_policy_says_to_ask_the_leaders(site, db_path):
+def test_with_no_mail_set_up_the_policy_says_to_ask_the_staff(site, db_path):
     """The group's own contact (FR-PUB-01) is not used: the policy names only the mail address."""
     with open_db(db_path) as conn:
         events.append_server(
@@ -1667,15 +1667,30 @@ def test_with_no_mail_set_up_the_policy_says_to_ask_the_leaders(site, db_path):
     page = site.get("/privacy").text
 
     assert "mailto:" not in page
-    assert "contact the group's leaders" in page
+    assert "talk to the society's staff" in page
 
 
 def test_the_policy_reads_without_a_group_name_and_escapes_one(site, db_path):
-    assert "The group uses Inventory Tracker" in site.get("/privacy").text
+    assert "The society uses Inventory Tracker" in site.get("/privacy").text
 
     set_group(db_path, "<b>Scouts</b>")
 
     assert "&lt;b&gt;Scouts&lt;/b&gt; uses Inventory Tracker" in site.get("/privacy").text
+
+
+def test_the_policy_says_what_is_kept_about_a_client_and_when_it_goes(site):
+    """FR-PUB-08. A client reads this to learn what the society holds about them: a nickname, and not for long."""
+    page = " ".join(site.get("/privacy").text.split())
+
+    assert "we do not ask who you are" in page
+    assert "a nickname or initials" in page
+    assert "deleted when the goods are handed to you" in page
+    assert "never put in an email" in page
+    assert "The drop-off point is deleted with the nickname" in page
+    assert "A backup taken while a hold is open" in page
+    # What the page said of the Scout group it was written for.
+    for gone in ("Young people", "youth", "gear", "check-out", "repair"):
+        assert gone not in page, gone
 
 
 def test_a_lock_is_recorded_as_locked(real, failures):

@@ -1,13 +1,15 @@
 """The privacy policy, a plain page anyone can open with no sign-in (FR-PUB-07).
 
 Served by the server, not the client: an app store's reviewer, or anyone who never installed
-the app, opens it as a link, with no script and no service worker. The text is the same for
+the app, opens it as a link, with no script and no service worker. It is written for everyone the
+society deals with: people who receive goods, people who give them, and people with accounts. A change
+to what is kept about any of them is a change to this page (FR-PUB-08). The text is the same for
 every group. The group's name and mail address are filled in from its settings when it is asked for.
 """
 
 from html import escape
 
-UPDATED = "11 November 2026"
+UPDATED = "14 November 2026"
 
 STYLE = """
 :root { color-scheme: dark; }
@@ -24,12 +26,12 @@ a { color: #fff; }
 
 def page(group: str, mail_from: str | None) -> str:
     """The whole page. `mail_from` is the address the group's mail is sent from."""
-    who = escape(group) if group else "the group"
-    subject = escape(group) if group else "The group"
+    who = escape(group) if group else "the society"
+    subject = escape(group) if group else "The society"
     if mail_from:
         ask = f'email <a href="mailto:{escape(mail_from, quote=True)}">{escape(mail_from)}</a>'
     else:
-        ask = "contact the group's leaders"
+        ask = "talk to the society's staff"
     title = f"Privacy · {escape(group)}" if group else "Privacy · Inventory Tracker"
     return f"""<!doctype html>
 <html lang="en">
@@ -44,31 +46,65 @@ def page(group: str, mail_from: str | None) -> str:
 <h1>Privacy</h1>
 <p class="muted">Last updated {UPDATED}</p>
 
-<p>{subject} uses Inventory Tracker to keep track of its equipment: what it owns, where it is, and who has it.
-{subject} runs it, not a company. Its volunteers look after it.</p>
+<p>{subject} uses Inventory Tracker to keep track of donated goods: what was given, where it is stored, what is set
+aside for someone, and what was given out. {subject} runs it, not a company.</p>
 
-<h2>What we keep</h2>
+<h2>If you receive goods from us</h2>
+<p>You do not need an account, and we do not ask who you are. Inventory Tracker has no place to record your name,
+address, phone number, or anything about your health.</p>
+<p>When goods are set aside for you, the hold carries a nickname or initials, typed by our staff or by the outreach
+worker who asked for it. That is all it knows about you.</p>
+<ul>
+<li>The nickname is deleted when the goods are handed to you, or when the hold ends any other way.</li>
+<li>It is never written to our permanent records, and never put in an email.</li>
+<li>While the hold is open, our staff can see it, and so can the outreach worker who asked for the hold. No other
+outreach worker can.</li>
+</ul>
+<p>If the goods are delivered, we record a time and a drop-off point: a place to meet, not your home or your name. The
+drop-off point is deleted with the nickname, and is never put in an email. The time stays in our records, with nothing
+that says who the delivery was for.</p>
+<p>A backup taken while a hold is open includes its nickname and drop-off point, until that backup is deleted.</p>
+
+<h2>If you give goods to us</h2>
+<p>You do not need an account. Staff can note where a donation came from, such as an organization or a clothing drive.
+That note is optional and is kept for good. If you give as a person and do not want your name recorded, tell our
+staff.</p>
+
+<h2>If you look at what is available</h2>
+<p>The public list of goods needs no account. It sets no cookies and does no tracking. It takes no requests: to get
+goods, you speak with our staff.</p>
+
+<h2>If you have an account</h2>
+<p>Our staff, our administrators, and outreach workers from other organizations have accounts. For them we keep:</p>
 <ul>
 <li>Your account: your name, email address and role. Your password is kept only as a one-way hash, so no one can read
 it.</li>
-<li>Each check-out, check-in and other change to the gear, with who made it and when.</li>
-<li>Notes, repair tickets and photos that members add.</li>
+<li>Each thing you record: goods taken in, moved, held, handed out, or changed, with your name and the time. An
+outreach worker's requests for holds are recorded the same way.</li>
+<li>Notes and photos that you add.</li>
 <li>For each device you sign in on: what kind it is, such as "Safari on iPhone", which version of the app it runs, and
 when it last connected. Not the full details your browser sends.</li>
-<li>Found-gear reports. Anyone who finds our gear can tell us where it is, with no account. We keep what they type,
-including any contact details they give. Every member can see it, and members who asked for found-gear alerts get it
-by email.</li>
 </ul>
-<p>We keep these records for as long as {who} uses Inventory Tracker. They are the history of the group's equipment.</p>
+<p>We keep these records for as long as {who} uses Inventory Tracker. They are the history of what was given and
+where it went.</p>
+<p>Please keep details about the people we serve out of notes. A note is kept for good.</p>
+
+<h2>Reports from the public</h2>
+<p>Anyone who finds something of ours with a code on it can tell us where it is, with no account. We keep what they
+type, including any contact details they give. Staff can see it, and staff who asked for these alerts get it by
+email.</p>
 
 <h2>Photos</h2>
 <p>The app re-saves most photos smaller before sending them, which drops where they were taken. A photo it cannot
-re-save is kept as it arrived, and may include where it was taken if your phone saved that.</p>
+re-save is kept as it arrived, and may include where it was taken if the phone saved that.</p>
 
-<h2>On your phone</h2>
-<p>The app keeps a copy of the group's records on your phone, so it works with no signal. This includes members' names,
-notes and found-gear reports.</p>
-<p>When you scan a code, the camera only reads the code. No picture is saved or sent.</p>
+<h2>On a staff phone</h2>
+<p>The app keeps a copy of our records on each staff phone, so it works with no signal. This includes staff names,
+notes, and the nickname and drop-off point of each open hold. Those two are removed from the phone when the hold
+ends.</p>
+<p>An outreach worker's phone keeps no copy. It is shown the goods marked for outreach and that worker's own
+requests, each time it is opened.</p>
+<p>When someone scans a code, the camera only reads the code. No picture is saved or sent.</p>
 
 <h2>Logs and backups</h2>
 <p>The server keeps short-term logs of each request and of failed sign-ins, with the IP address and email address, to
@@ -77,31 +113,31 @@ keep it working and secure. They are deleted after a while.</p>
 
 <h2>Who can see it</h2>
 <ul>
-<li>Signed-in members of the group see the records. Administrators also see members' email addresses.</li>
-<li>Members who ask for email alerts get them about found gear, repair tickets and new members.</li>
-<li>Someone who scans a code without signing in sees only the group's name and how to contact it.</li>
+<li>Signed-in staff and administrators see the records. Administrators also see account email addresses.</li>
+<li>An outreach worker sees only the goods marked for outreach or for the public, and their own requests.</li>
+<li>Anyone can see the goods marked public: a name, a description, categories and photos. Not how many there are,
+where they are kept, where they came from, or who has a hold.</li>
+<li>Someone who scans a code without signing in sees only our name and how to contact us.</li>
 </ul>
 
 <h2>What we do not do</h2>
 <p>No ads, no tracking and no analytics. We do not sell or share your data. The only other services involved are:</p>
 <ul>
-<li>the group's email provider, which sends invites, password resets and alerts</li>
-<li>calendar feeds the group adds. The server fetches them and sends nothing about you.</li>
+<li>our email provider, which sends invites, password resets and alerts to people with accounts. An email about a
+hold never says who the hold is for or where a delivery goes.</li>
+<li>calendar feeds we add. The server fetches them and sends nothing about you.</li>
 </ul>
 
 <h2>AI assistants</h2>
-<p>A member can connect an AI tool of their own to Inventory Tracker. That tool gets what it asks for, as far as that
-member is allowed to see: gear, notes and names, for example. The group does not control that tool or what it does with
-the data. Inventory Tracker itself uses no AI service.</p>
-
-<h2>Young people</h2>
-<p>Inventory Tracker does not ask for anything about the young people in the group. No field asks for youth data. Please
-keep details about youth out of notes.</p>
+<p>A staff member or administrator can connect an AI tool of their own to Inventory Tracker. That tool gets what it
+asks for, as far as that person is allowed to see. This includes the nickname and drop-off point of an open hold. We
+do not control that tool or what it does with the data. An outreach worker cannot connect one. Inventory Tracker
+itself uses no AI service.</p>
 
 <h2>Deleting your account</h2>
 <p>In the app, go to Settings, then Delete my account. This signs you out, and you cannot sign in again. Your other
-devices sign out the next time they connect. Your name stays on the group's records of check-outs, notes, tickets and
-photos, because they are the history of the group's equipment. An Administrator can restore your access.</p>
+devices sign out the next time they connect. Your name stays on the records of what you did, because they are the
+history of what was given and where it went. An administrator can restore your access.</p>
 
 <h2>Questions</h2>
 <p>To ask about your data, {ask}.</p>
